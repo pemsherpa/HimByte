@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* ============================================
+   HIMBYTE — "Rara Blue" Design System
+   Primary: Himalayan Lake Blue  Accent: Marigold Gold
+   ============================================ */
+
+@theme {
+  /* Primary — Rara Lake Blue */
+  --color-primary:       #1B5E8A;
+  --color-primary-light: #2E86C1;
+  --color-primary-dark:  #0D2B3E;
+  --color-primary-soft:  #E8F4FD;
+
+  /* Accent — Marigold / Temple Gold */
+  --color-gold:          #E8A820;
+  --color-gold-light:    #F5C842;
+  --color-gold-dark:     #B37D0E;
+  --color-gold-soft:     #FEF5E7;
+
+  /* Semantic */
+  --color-success:       #16A34A;
+  --color-success-soft:  #DCFCE7;
+  --color-warning:       #D97706;
+  --color-warning-soft:  #FEF3C7;
+  --color-danger:        #DC2626;
+  --color-danger-soft:   #FEE2E2;
+
+  /* Neutrals — high contrast for restaurant low-light environments */
+  --color-ink:           #0F172A;   /* headings, primary text */
+  --color-body:          #334155;   /* body text */
+  --color-muted:         #64748B;   /* labels, captions */
+  --color-border:        #CBD5E1;   /* dividers */
+  --color-surface:       #FFFFFF;
+  --color-canvas:        #F4F8FB;   /* page background (light blue-white) */
+  --color-canvas-dark:   #E2EBF3;
+
+  /* Brand sidebar (dark) */
+  --color-sidebar:       #0D2540;
+  --color-sidebar-hover: #1B3F6B;
+
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ---- Base ---- */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 { color: var(--color-ink); line-height: 1.25; }
+  p { color: var(--color-body); }
+}
+
+/* ---- Mandala background (customer pages) ---- */
+.bg-mandala {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='%231B5E8A' stroke-width='0.5' opacity='0.07'%3E%3Ccircle cx='40' cy='40' r='35'/%3E%3Ccircle cx='40' cy='40' r='25'/%3E%3Ccircle cx='40' cy='40' r='15'/%3E%3Cpath d='M40 5 L40 75 M5 40 L75 40 M14.6 14.6 L65.4 65.4 M65.4 14.6 L14.6 65.4'/%3E%3Cpath d='M40 5 Q55 25 40 40 Q25 55 40 75'/%3E%3Cpath d='M40 5 Q25 25 40 40 Q55 55 40 75'/%3E%3Cpath d='M5 40 Q25 25 40 40 Q55 55 75 40'/%3E%3Cpath d='M5 40 Q25 55 40 40 Q55 25 75 40'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+/* ---- Dhaka Topi pattern (admin sidebar) ---- */
+.bg-dhaka {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23E8A820' stroke-width='0.4' opacity='0.12'%3E%3Cpath d='M0 20 L10 0 L20 20 L10 40 Z'/%3E%3Cpath d='M20 20 L30 0 L40 20 L30 40 Z'/%3E%3Cpath d='M10 0 L20 20 L30 0'/%3E%3Cpath d='M10 40 L20 20 L30 40'/%3E%3Crect x='8' y='8' width='4' height='4' transform='rotate(45 10 10)'/%3E%3Crect x='28' y='8' width='4' height='4' transform='rotate(45 30 10)'/%3E%3Crect x='18' y='18' width='4' height='4' transform='rotate(45 20 20)'/%3E%3Crect x='8' y='28' width='4' height='4' transform='rotate(45 10 30)'/%3E%3Crect x='28' y='28' width='4' height='4' transform='rotate(45 30 30)'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--color-canvas); }
+::-webkit-scrollbar-thumb { background: var(--color-primary-light); border-radius: 4px; }
+
+/* ---- Animations ---- */
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+.animate-status-pulse { animation: status-pulse 2s ease-in-out infinite; }
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up { animation: slide-up 0.35s ease-out forwards; }
+
+@keyframes ring {
+  0%  { transform: rotate(0deg); }
+  10% { transform: rotate(-15deg); }
+  20% { transform: rotate(15deg); }
+  30% { transform: rotate(-10deg); }
+  40% { transform: rotate(10deg); }
+  50% { transform: rotate(0deg); }
+}
+.animate-ring { animation: ring 0.6s ease-in-out; }
+
+/* ---- Utility patches ---- */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ---- Glass surface ---- */
+.glass {
+  background: rgba(255,255,255,0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
