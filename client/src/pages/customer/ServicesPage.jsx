@@ -19,7 +19,7 @@ export default function ServicesPage() {
   const slug    = searchParams.get('r');
   const locId   = searchParams.get('loc');
   const room    = searchParams.get('room');
-  const { restaurantId, tableRoomId } = useCartStore();
+  const { restaurantId, tableRoomId, sessionId } = useCartStore();
   const [sent, setSent] = useState({});
 
   const backPath = `/menu?r=${slug}${locId ? `&loc=${locId}` : room ? `&room=${room}` : ''}`;
@@ -29,6 +29,7 @@ export default function ServicesPage() {
       await api.createServiceRequest({
         restaurant_id: restaurantId,
         table_room_id: tableRoomId,
+        session_id: sessionId || undefined,
         service_type: type,
       });
       setSent((s) => ({ ...s, [type]: true }));

@@ -4,6 +4,7 @@ import { Utensils, BedDouble, Loader2, MapPin } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useCartStore } from '../../stores/cartStore';
 import MandalaBackground from '../../components/patterns/MandalaBackground';
+import { matchesLocationIdentifier } from '../../lib/locationMatch';
 
 export default function QRLanding() {
   const [searchParams] = useSearchParams();
@@ -37,12 +38,12 @@ export default function QRLanding() {
         } else if (legacyTable) {
           // legacy QR: ?r=slug&table=1
           const all = await api.getTablesRooms(data.id, 'table');
-          const loc = all.find((t) => t.identifier.includes(legacyTable));
+          const loc = all.find((t) => matchesLocationIdentifier(t, legacyTable));
           setLocation(loc || { id: null, identifier: `Table ${legacyTable}`, type: 'table' });
           setContext(data.id, loc?.id || null);
         } else if (legacyRoom) {
           const all = await api.getTablesRooms(data.id, 'room');
-          const loc = all.find((t) => t.identifier.includes(legacyRoom));
+          const loc = all.find((t) => matchesLocationIdentifier(t, legacyRoom));
           setLocation(loc || { id: null, identifier: `Room ${legacyRoom}`, type: 'room' });
           setContext(data.id, loc?.id || null);
         } else {
@@ -72,7 +73,7 @@ export default function QRLanding() {
   );
 
   const isRoom = location?.type === 'room';
-  const menuPath = `/menu?r=${slug}${locationId ? `&loc=${locationId}` : legacyTable ? `&table=${legacyTable}` : legacyRoom ? `&room=${legacyRoom}` : ''}`;
+  const menuPath = `/menu/${slug}${locationId ? `?loc=${locationId}` : legacyTable ? `?table=${legacyTable}` : legacyRoom ? `?room=${legacyRoom}` : ''}`;
   const servicesPath = `/services?r=${slug}${locationId ? `&loc=${locationId}` : legacyRoom ? `&room=${legacyRoom}` : ''}`;
 
   return (

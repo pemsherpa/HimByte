@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { supabase, DEMO_MODE } from '../lib/supabase';
 import { useOrderStore } from '../stores/orderStore';
+import { api } from '../lib/api';
 
 const CHIME_FREQUENCY = 880;
 const CHIME_DURATION = 0.3;
@@ -30,33 +31,27 @@ function playNotificationChime() {
 }
 
 export function useRealtimeOrders(restaurantId) {
-  const { setPendingOrders, setActiveOrders, moveOrderToActive, updateOrderInList } = useOrderStore();
+  const upsertFromRealtime = useOrderStore((s) => s.upsertFromRealtime);
   const channelRef = useRef(null);
 
   useEffect(() => {
     if (!restaurantId || DEMO_MODE || !supabase) return;
 
     const channel = supabase
-      .channel(`orders:${restaurantId}`)
+      .channel(`orders-staff:${restaurantId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
         (payload) => {
-          if (payload.new.status === 'pending') {
-            setPendingOrders((prev) => [payload.new, ...(Array.isArray(prev) ? prev : [])]);
-            playNotificationChime();
-          }
+          upsertFromRealtime(payload.new);
+          if (payload.new.status === 'pending') playNotificationChime();
         }
       )
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
         (payload) => {
-          const order = payload.new;
-          if (order.status === 'approved') {
-            moveOrderToActive(order.id);
-          }
-          updateOrderInList(order);
+          upsertFromRealtime(payload.new);
         }
       )
       .subscribe();
@@ -64,26 +59,68 @@ export function useRealtimeOrders(restaurantId) {
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
+      if (channelRef.current) supabase.removeChannel(channelRef.current);
     };
-  }, [restaurantId, setPendingOrders, setActiveOrders, moveOrderToActive, updateOrderInList]);
+  }, [restaurantId, upsertFromRealtime]);
+}
+
+const TERMINAL_STATUSES = ['served', 'cancelled'];
+
+function pickActiveOrder(orders) {
+  if (!orders?.length) return null;
+  const active = orders.filter((o) => !TERMINAL_STATUSES.includes(o.status));
+  if (active.length) return active[0]; // most recent non-terminal
+  return null;
 }
 
 export function useRealtimeCustomerOrder(sessionId) {
-  const { setCurrentOrder } = useOrderStore();
+  const setCurrentOrder = useOrderStore((s) => s.setCurrentOrder);
+  const fetchedRef = useRef(false);
 
+  // Re-fetch latest order on mount / sessionId change (handles page refresh)
+  useEffect(() => {
+    if (!sessionId) return;
+    fetchedRef.current = false;
+
+    api.trackOrders(sessionId)
+      .then((orders) => {
+        const active = pickActiveOrder(orders);
+        if (active) setCurrentOrder(active);
+        else {
+          const persisted = useOrderStore.getState().currentOrder;
+          if (persisted && TERMINAL_STATUSES.includes(persisted.status)) {
+            setCurrentOrder(null);
+          }
+        }
+        fetchedRef.current = true;
+      })
+      .catch(() => { fetchedRef.current = true; });
+  }, [sessionId, setCurrentOrder]);
+
+  // Realtime subscription for live status changes
   useEffect(() => {
     if (!sessionId || DEMO_MODE || !supabase) return;
 
+    const merge = (row) => {
+      const prev = useOrderStore.getState().currentOrder;
+      if (prev && prev.id === row.id) return { ...prev, ...row };
+      return row;
+    };
+
     const channel = supabase
-      .channel(`customer:${sessionId}`)
+      .channel(`orders-guest:${sessionId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders', filter: `session_id=eq.${sessionId}` },
+        (payload) => {
+          setCurrentOrder(merge(payload.new));
+        }
+      )
       .on(
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'orders', filter: `session_id=eq.${sessionId}` },
         (payload) => {
-          setCurrentOrder(payload.new);
+          setCurrentOrder(merge(payload.new));
         }
       )
       .subscribe();

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Download, Printer, Table2, BedDouble, RefreshCw } from 'lucide-react';
+import { Download, Printer, Table2, BedDouble, RefreshCw, Plus } from 'lucide-react';
 import { api } from '../../lib/api';
-import { DEMO_RESTAURANT_ID, DEMO_RESTAURANT_SLUG } from '../../lib/constants';
+import useAuthStore from '../../stores/authStore';
 import Card from '../../components/ui/Card';
+import toast from 'react-hot-toast';
 
 const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
 
@@ -104,16 +105,47 @@ export default function QRCodes() {
   const [filter, setFilter]        = useState('all');   // 'all' | 'table' | 'room'
   const [restaurant, setRestaurant] = useState(null);
   const [loading, setLoading]      = useState(true);
+  const [newTableLabel, setNewTableLabel] = useState('');
+  const [newLocType, setNewLocType] = useState('table'); // 'table' | 'room'
+  const [addingTable, setAddingTable] = useState(false);
+  const { restaurantId, profile } = useAuthStore();
+
+  async function handleAddTable(e) {
+    e.preventDefault();
+    if (!restaurantId || !newTableLabel.trim()) return;
+    setAddingTable(true);
+    try {
+      await api.createTableRoom(restaurantId, {
+        identifier: newTableLabel.trim(),
+        type: newLocType === 'room' ? 'room' : 'table',
+      });
+      toast.success(`${newLocType === 'room' ? 'Room' : 'Table'} added — QR is ready below`);
+      setNewTableLabel('');
+      const locs = await api.getTablesRooms(restaurantId);
+      setLocations(locs);
+    } catch (err) {
+      toast.error(err.message || 'Could not add table');
+    } finally {
+      setAddingTable(false);
+    }
+  }
 
   useEffect(() => {
+    if (!restaurantId) {
+      setLoading(false);
+      return;
+    }
     Promise.all([
-      api.getRestaurant(DEMO_RESTAURANT_SLUG),
-      api.getTablesRooms(DEMO_RESTAURANT_ID),
-    ]).then(([r, locs]) => {
-      setRestaurant(r);
-      setLocations(locs);
-    }).finally(() => setLoading(false));
-  }, []);
+      api.getTablesRooms(restaurantId),
+      api.getRestaurantById(restaurantId).catch(() => null),
+    ])
+      .then(([locs, meta]) => {
+        setLocations(locs);
+        if (meta) setRestaurant(meta);
+        else setRestaurant({ name: profile?.full_name?.replace(' Admin', '').replace(' Staff', '') || 'Restaurant', slug: null });
+      })
+      .finally(() => setLoading(false));
+  }, [restaurantId, profile]);
 
   function handlePrintAll() {
     const visible = filtered;
@@ -154,7 +186,7 @@ export default function QRCodes() {
     <div>
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-black text-ink">QR Codes</h1>
+          <h1 className="text-2xl font-black text-ink">Tables & rooms</h1>
           <p className="text-sm text-muted mt-0.5">
             {restaurant?.name} · {tables} tables{rooms > 0 ? ` · ${rooms} rooms` : ''}
           </p>
@@ -164,6 +196,51 @@ export default function QRCodes() {
           <Printer size={16} /> Print All QR Codes
         </button>
       </div>
+
+      {/* Add table */}
+      <Card className="p-5 mb-6">
+        <h2 className="text-sm font-bold text-ink mb-2 flex items-center gap-2">
+          <Plus size={16} className="text-primary" />
+          Add table or room
+        </h2>
+        <p className="text-xs text-muted mb-3">
+          Each location gets a unique QR code (stable ID in the link). Guests open the menu and orders are tied to that table or room.
+        </p>
+        <form onSubmit={handleAddTable} className="flex flex-wrap gap-3 items-end">
+          <label className="min-w-[140px]">
+            <span className="block text-[11px] font-semibold text-muted mb-1">Type</span>
+            <select
+              value={newLocType}
+              onChange={(e) => setNewLocType(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-canvas text-sm text-ink"
+            >
+              <option value="table">Table</option>
+              <option value="room">Room</option>
+            </select>
+          </label>
+          <label className="flex-1 min-w-[200px]">
+            <span className="block text-[11px] font-semibold text-muted mb-1">Name</span>
+            <input
+              value={newTableLabel}
+              onChange={(e) => setNewTableLabel(e.target.value)}
+              placeholder={newLocType === 'room' ? 'e.g. Room 101' : 'e.g. Table 12'}
+              className="w-full px-3 py-2.5 rounded-xl border border-border bg-canvas text-sm text-ink"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={addingTable || !newTableLabel.trim()}
+            className="px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-dark disabled:opacity-50 inline-flex items-center gap-2"
+          >
+            {addingTable ? '…' : (
+              <>
+                <Plus size={16} />
+                Create & show QR
+              </>
+            )}
+          </button>
+        </form>
+      </Card>
 
       {/* Info banner */}
       <div className="bg-primary-soft border border-primary/20 rounded-2xl p-4 mb-6 flex items-start gap-3">
@@ -193,7 +270,7 @@ export default function QRCodes() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {filtered.map((loc) => (
-            <QRCard key={loc.id} location={loc} slug={restaurant?.slug || DEMO_RESTAURANT_SLUG} />
+            <QRCard key={loc.id} location={loc} slug={restaurant?.slug || 'venue'} />
           ))}
         </div>
       )}

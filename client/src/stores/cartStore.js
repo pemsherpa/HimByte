@@ -1,18 +1,22 @@
 import { create } from 'zustand';
 
+function getOrCreateSessionId() {
+  let id = sessionStorage.getItem('himbyte_session');
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem('himbyte_session', id);
+  }
+  return id;
+}
+
 export const useCartStore = create((set, get) => ({
   items: [],
   restaurantId: null,
   tableRoomId: null,   // matches schema: table_room_id
-  sessionId: null,
+  sessionId: getOrCreateSessionId(),
 
   setContext: (restaurantId, tableRoomId) => {
-    let sessionId = sessionStorage.getItem('himbyte_session');
-    if (!sessionId) {
-      sessionId = crypto.randomUUID();
-      sessionStorage.setItem('himbyte_session', sessionId);
-    }
-    set({ restaurantId, tableRoomId, sessionId });
+    set({ restaurantId, tableRoomId, sessionId: getOrCreateSessionId() });
   },
 
   addItem: (item) =>

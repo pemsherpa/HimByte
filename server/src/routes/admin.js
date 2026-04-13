@@ -1,26 +1,165 @@
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
-import { supabase } from '../index.js';
+import { supabase, getClient } from '../supabaseClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { attachCategoryNames } from '../lib/menuItemCategoryNames.js';
 
 const router = Router();
 
-// Super Admin: Create a new restaurant tenant
-router.post('/restaurants', requireAuth, requireRole('super_admin'), async (req, res) => {
-  const { name, slug, address, city, phone, email, pan_number, vat_registered, is_hotel, owner_email } = req.body;
+const MENU_IMAGES_BUCKET = 'menu-images';
+const MAX_MENU_IMAGE_BYTES = 10 * 1024 * 1024;
+
+function extFromMime(contentType, filename) {
+  const m = (contentType || '').toLowerCase();
+  if (m.includes('png')) return 'png';
+  if (m.includes('webp')) return 'webp';
+  if (m.includes('gif')) return 'gif';
+  if (m.includes('jpeg') || m.includes('jpg')) return 'jpg';
+  const n = (filename || '').toLowerCase();
+  if (n.endsWith('.png')) return 'png';
+  if (n.endsWith('.webp')) return 'webp';
+  if (n.endsWith('.gif')) return 'gif';
+  return 'jpg';
+}
+
+function canAccessRestaurant(req, restaurantId) {
+  if (!restaurantId) return false;
+  if (req.profile?.role === 'super_admin') return true;
+  return req.profile?.restaurant_id === restaurantId;
+}
+
+// Super Admin: List all restaurants (with today's order counts)
+router.get('/restaurants', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const { data: restaurants, error } = await supabase
+    .from('restaurants')
+    .select('*, profiles(id, full_name, role, email)')
+    .order('created_at', { ascending: false });
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const now = new Date();
+  const startUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+
+  const enriched = await Promise.all(
+    (restaurants || []).map(async (r) => {
+      const { count } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', r.id)
+        .gte('created_at', startUtc);
+      return { ...r, order_count_today: count || 0 };
+    })
+  );
+
+  res.json(enriched);
+});
+
+// Super Admin: Update subscription / billing fields for a tenant
+router.patch('/restaurants/:id/subscription', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const { subscription_status, subscription_plan, trial_ends_at } = req.body;
+  const patch = {};
+  if (subscription_status !== undefined) patch.subscription_status = String(subscription_status).trim();
+  if (subscription_plan !== undefined) patch.subscription_plan = String(subscription_plan).trim();
+  if (trial_ends_at !== undefined) {
+    patch.trial_ends_at = trial_ends_at === null || trial_ends_at === '' ? null : trial_ends_at;
+  }
+  if (!Object.keys(patch).length) {
+    return res.status(400).json({ error: 'No subscription fields to update' });
+  }
 
   const { data, error } = await supabase
     .from('restaurants')
+    .update(patch)
+    .eq('id', req.params.id)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Super Admin: Create a new restaurant tenant
+router.post('/restaurants', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const { name, slug, address, phone, vat_pan_number, venue_type } = req.body;
+  const vt = String(venue_type || 'restaurant').toLowerCase() === 'hotel' ? 'hotel' : 'restaurant';
+
+  const { data, error } = await supabase
+    .from('restaurants')
+    .insert({ name, slug, address, phone, vat_pan_number, is_active: true, venue_type: vt })
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(201).json(data);
+});
+
+// Super Admin: Global analytics
+router.get('/analytics', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const [restaurantsRes, ordersRes] = await Promise.all([
+    supabase.from('restaurants').select('id', { count: 'exact', head: true }),
+    supabase.from('orders').select('id, status, total_price, created_at, order_items(quantity, menu_items(name))').order('created_at', { ascending: false }).limit(2000),
+  ]);
+
+  const orders = ordersRes.data || [];
+  const now = new Date();
+  const startUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const todayOrders = orders.filter((o) => new Date(o.created_at) >= startUtc);
+  const nonCancelled = (list) => list.filter((o) => o.status !== 'cancelled');
+  const served = orders.filter((o) => o.status === 'served');
+
+  const totalRevenue = nonCancelled(orders).reduce((s, o) => s + Number(o.total_price || 0), 0);
+  const revenueToday = nonCancelled(todayOrders).reduce((s, o) => s + Number(o.total_price || 0), 0);
+
+  const counts = {};
+  for (const o of orders) {
+    for (const oi of o.order_items || []) {
+      const n = oi.menu_items?.name || 'Item';
+      counts[n] = (counts[n] || 0) + Number(oi.quantity || 0);
+    }
+  }
+  const popular_items = Object.entries(counts)
+    .map(([name, n]) => ({ name, orders: n }))
+    .sort((a, b) => b.orders - a.orders)
+    .slice(0, 8);
+
+  const hourly_orders = Array.from({ length: 24 }, (_, h) => ({
+    hour: `${h}`,
+    count: todayOrders.filter((o) => new Date(o.created_at).getHours() === h).length,
+  }));
+
+  res.json({
+    total_restaurants: restaurantsRes.count || 0,
+    total_orders: orders.length,
+    orders_today: todayOrders.length,
+    total_revenue: totalRevenue,
+    revenue_today: revenueToday,
+    avg_order_value: orders.length ? (totalRevenue / orders.length).toFixed(2) : '0',
+    completion_rate: orders.length ? ((served.length / orders.length) * 100).toFixed(1) : '0',
+    popular_items: popular_items.length ? popular_items : [{ name: '—', orders: 0 }],
+    hourly_orders,
+  });
+});
+
+// Owner: Create a menu category (food or service)
+router.post('/categories', requireAuth, requireRole('restaurant_admin', 'super_admin'), async (req, res) => {
+  const { restaurant_id, name, description, priority, is_service_category } = req.body;
+  if (!restaurant_id || !String(name || '').trim()) {
+    return res.status(400).json({ error: 'restaurant_id and name are required' });
+  }
+  if (req.profile.role !== 'super_admin' && req.profile.restaurant_id !== restaurant_id) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const pri = priority != null ? Number(priority) : 0;
+  const { data, error } = await supabase
+    .from('categories')
     .insert({
-      name,
-      slug,
-      address,
-      city,
-      phone,
-      email,
-      pan_number,
-      vat_registered: vat_registered || false,
-      is_hotel: is_hotel || false,
-      subscription_status: 'trial',
+      restaurant_id,
+      name: String(name).trim(),
+      description: description != null ? String(description) : null,
+      priority: pri,
+      is_service_category: !!is_service_category,
+      sort_order: pri,
     })
     .select()
     .single();
@@ -29,82 +168,123 @@ router.post('/restaurants', requireAuth, requireRole('super_admin'), async (req,
   res.status(201).json(data);
 });
 
-// Super Admin: List all restaurants
-router.get('/restaurants', requireAuth, requireRole('super_admin'), async (req, res) => {
-  const { data, error } = await supabase
-    .from('restaurants')
-    .select('*, profiles(id, full_name, role)')
-    .order('created_at', { ascending: false });
+// Staff/Admin: Get all menu items for a restaurant (includes unavailable)
+router.get('/menu-items/:restaurantId', requireAuth, async (req, res) => {
+  const rid = req.params.restaurantId;
+  if (!canAccessRestaurant(req, rid)) {
+    return res.status(403).json({ error: 'Access denied to this restaurant' });
+  }
+  const db = getClient(req);
+  const { data, error } = await db
+    .from('menu_items')
+    .select('*')
+    .eq('restaurant_id', rid)
+    .order('name');
 
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  const enriched = await attachCategoryNames(db, data || []);
+  res.json(enriched);
 });
 
-// Super Admin: Update subscription
-router.patch('/restaurants/:id/subscription', requireAuth, requireRole('super_admin'), async (req, res) => {
-  const { subscription_status, subscription_plan } = req.body;
+// Owner: Upload menu image (service role — avoids Storage RLS / client schema issues)
+router.post('/menu-images/upload', requireAuth, requireRole('restaurant_admin', 'super_admin'), async (req, res) => {
+  const { restaurant_id, content_base64, content_type, filename } = req.body;
+  if (!restaurant_id || content_base64 == null || content_base64 === '') {
+    return res.status(400).json({ error: 'restaurant_id and content_base64 are required' });
+  }
+  if (!canAccessRestaurant(req, restaurant_id)) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
 
-  const { data, error } = await supabase
-    .from('restaurants')
-    .update({ subscription_status, subscription_plan })
-    .eq('id', req.params.id)
-    .select()
-    .single();
+  const raw = String(content_base64).replace(/^data:[^;]+;base64,/, '');
+  let buf;
+  try {
+    buf = Buffer.from(raw, 'base64');
+  } catch {
+    return res.status(400).json({ error: 'Invalid base64 payload' });
+  }
+  if (!buf.length) return res.status(400).json({ error: 'Empty image data' });
+  if (buf.length > MAX_MENU_IMAGE_BYTES) {
+    return res.status(400).json({ error: 'Image too large (max 10MB)' });
+  }
 
-  if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
-});
+  const ext = extFromMime(content_type, filename);
+  let mime = content_type && /^image\//i.test(String(content_type))
+    ? String(content_type).split(';')[0].trim()
+    : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
 
-// Super Admin: Global analytics
-router.get('/analytics', requireAuth, requireRole('super_admin'), async (req, res) => {
-  const [restaurants, orders, revenue] = await Promise.all([
-    supabase.from('restaurants').select('id', { count: 'exact' }),
-    supabase.from('orders').select('id', { count: 'exact' }),
-    supabase.from('orders').select('total').not('status', 'in', '("rejected","cancelled")'),
-  ]);
-
-  const totalRevenue = revenue.data?.reduce((sum, o) => sum + Number(o.total), 0) || 0;
-
-  res.json({
-    total_restaurants: restaurants.count || 0,
-    total_orders: orders.count || 0,
-    total_revenue: totalRevenue,
+  const path = `${restaurant_id}/${randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from(MENU_IMAGES_BUCKET).upload(path, buf, {
+    contentType: mime,
+    upsert: false,
   });
+  if (error) return res.status(500).json({ error: error.message });
+
+  const { data } = supabase.storage.from(MENU_IMAGES_BUCKET).getPublicUrl(path);
+  res.json({ publicUrl: data.publicUrl });
 });
 
-// Restaurant Admin: Manage menu items
+// Owner: Create menu item
 router.post('/menu-items', requireAuth, requireRole('restaurant_admin', 'super_admin'), async (req, res) => {
+  const { restaurant_id, category_id, name, description, price, is_available, image_url } = req.body;
+  if (!restaurant_id || !category_id || !name || price === undefined || price === null) {
+    return res.status(400).json({ error: 'restaurant_id, category_id, name, and price are required' });
+  }
+  if (req.profile.role !== 'super_admin' && req.profile.restaurant_id !== restaurant_id) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
   const { data, error } = await supabase
     .from('menu_items')
-    .insert(req.body)
-    .select()
+    .insert({
+      restaurant_id,
+      category_id,
+      name: String(name).trim(),
+      description: description != null ? String(description) : null,
+      price: Number(price),
+      is_available: is_available !== false,
+      image_url: image_url != null && String(image_url).trim() ? String(image_url).trim() : null,
+    })
+    .select('*')
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  res.status(201).json(data);
+  const enriched = await attachCategoryNames(supabase, data);
+  res.status(201).json(enriched);
 });
 
-router.patch('/menu-items/:id', requireAuth, requireRole('restaurant_admin', 'staff', 'super_admin'), async (req, res) => {
-  const { data, error } = await supabase
+// Owner: Delete menu item
+router.delete('/menu-items/:id', requireAuth, requireRole('restaurant_admin', 'super_admin'), async (req, res) => {
+  const { data: row, error: fErr } = await supabase
     .from('menu_items')
-    .update(req.body)
+    .select('id, restaurant_id')
     .eq('id', req.params.id)
-    .select()
     .single();
+  if (fErr || !row) return res.status(404).json({ error: 'Item not found' });
+  if (req.profile.role !== 'super_admin' && row.restaurant_id !== req.profile.restaurant_id) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
 
+  const { error } = await supabase.from('menu_items').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
-  res.json(data);
+  res.status(204).send();
 });
 
-// Toggle item availability
+// Staff/Admin: Toggle menu item availability
 router.patch('/menu-items/:id/toggle', requireAuth, requireRole('restaurant_admin', 'staff'), async (req, res) => {
-  const { data: item } = await supabase
+  const db = getClient(req);
+  const { data: item, error: fetchError } = await db
     .from('menu_items')
-    .select('is_available')
+    .select('is_available, restaurant_id')
     .eq('id', req.params.id)
     .single();
 
-  const { data, error } = await supabase
+  if (fetchError || !item) return res.status(404).json({ error: 'Item not found' });
+  if (req.profile.role !== 'super_admin' && item.restaurant_id !== req.profile.restaurant_id) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const { data, error } = await db
     .from('menu_items')
     .update({ is_available: !item.is_available })
     .eq('id', req.params.id)
@@ -113,6 +293,182 @@ router.patch('/menu-items/:id/toggle', requireAuth, requireRole('restaurant_admi
 
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
+});
+
+// Staff/Admin: Update menu item (partial fields)
+router.patch('/menu-items/:id', requireAuth, requireRole('restaurant_admin', 'staff', 'super_admin'), async (req, res) => {
+  const { data: row, error: fErr } = await supabase
+    .from('menu_items')
+    .select('id, restaurant_id')
+    .eq('id', req.params.id)
+    .single();
+  if (fErr || !row) return res.status(404).json({ error: 'Item not found' });
+  if (req.profile.role !== 'super_admin' && row.restaurant_id !== req.profile.restaurant_id) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  const allowed = ['name', 'description', 'price', 'is_available', 'category_id', 'image_url'];
+  const patch = {};
+  for (const k of allowed) {
+    if (k in req.body) patch[k] = req.body[k];
+  }
+  if (!Object.keys(patch).length) {
+    return res.status(400).json({ error: 'No valid fields to update' });
+  }
+
+  const { data, error } = await supabase
+    .from('menu_items')
+    .update(patch)
+    .eq('id', req.params.id)
+    .select('*')
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  const enriched = await attachCategoryNames(supabase, data);
+  res.json(enriched);
+});
+
+// Restaurant analytics (merchant dashboard + Analytics page)
+router.get('/restaurant-analytics/:restaurantId', requireAuth, async (req, res) => {
+  const rid = req.params.restaurantId;
+  if (!canAccessRestaurant(req, rid)) {
+    return res.status(403).json({ error: 'Access denied to this restaurant' });
+  }
+
+  const period = String(req.query.period || 'lifetime').toLowerCase();
+  const now = new Date();
+  let periodStart = null;
+  if (period === 'today') {
+    periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  } else if (period === 'week') {
+    periodStart = new Date(now);
+    periodStart.setUTCDate(periodStart.getUTCDate() - 7);
+  } else if (period === 'month') {
+    periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  } else if (period === 'year') {
+    periodStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+  }
+
+  let query = supabase
+    .from('orders')
+    .select(`
+      id,
+      status,
+      created_at,
+      total_price,
+      order_items (quantity, menu_items (name))
+    `)
+    .eq('restaurant_id', rid)
+    .order('created_at', { ascending: false })
+    .limit(5000);
+
+  if (periodStart) {
+    query = query.gte('created_at', periodStart.toISOString());
+  }
+
+  const { data: orderRows, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+
+  const orders = orderRows || [];
+  const startUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+  const { data: todayRows } = await supabase
+    .from('orders')
+    .select(`
+      id,
+      status,
+      created_at,
+      total_price,
+      order_items (quantity, menu_items (name))
+    `)
+    .eq('restaurant_id', rid)
+    .gte('created_at', startUtc.toISOString());
+
+  const todayOrders = todayRows || [];
+
+  const nonCancelled = (list) => list.filter((o) => o.status !== 'cancelled');
+  const revenuePeriod = nonCancelled(orders).reduce((s, o) => s + Number(o.total_price || 0), 0);
+  const revenueToday = nonCancelled(todayOrders).reduce((s, o) => s + Number(o.total_price || 0), 0);
+  const countPeriod = orders.length;
+  const countToday = todayOrders.length;
+  const completedOrders = nonCancelled(orders).filter((o) => o.status === 'served').length;
+
+  const counts = {};
+  for (const o of orders) {
+    for (const oi of o.order_items || []) {
+      const n = oi.menu_items?.name || 'Item';
+      counts[n] = (counts[n] || 0) + Number(oi.quantity || 0);
+    }
+  }
+  let popular_items = Object.entries(counts)
+    .map(([name, n]) => ({ name, orders: n }))
+    .sort((a, b) => b.orders - a.orders)
+    .slice(0, 8);
+  if (!popular_items.length) {
+    popular_items = [{ name: '—', orders: 0 }];
+  }
+
+  const hourly_orders = Array.from({ length: 24 }, (_, h) => {
+    const c = todayOrders.filter((o) => new Date(o.created_at).getHours() === h).length;
+    return { hour: `${h}`, count: c };
+  });
+
+  const byDay = {};
+  for (const o of orders) {
+    const key = (o.created_at || '').slice(0, 10);
+    if (!key) continue;
+    if (!byDay[key]) byDay[key] = { revenue: 0, orders: 0 };
+    byDay[key].orders += 1;
+    if (o.status !== 'cancelled') byDay[key].revenue += Number(o.total_price || 0);
+  }
+
+  let chartStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 13));
+  if (periodStart && periodStart > chartStart) chartStart = periodStart;
+  if (period === 'today') {
+    chartStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  }
+  const endDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const maxChartStart = new Date(endDay.getTime() - 30 * 86400000);
+  if (chartStart < maxChartStart) chartStart = maxChartStart;
+
+  const revenue_by_day = [];
+  for (let t = chartStart.getTime(); t <= endDay.getTime(); t += 86400000) {
+    const d = new Date(t);
+    const key = d.toISOString().slice(0, 10);
+    const row = byDay[key] || { revenue: 0, orders: 0 };
+    revenue_by_day.push({
+      date: key,
+      label: d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }),
+      revenue: row.revenue,
+      orders: row.orders,
+    });
+  }
+
+  const orders_by_status = orders.reduce((acc, o) => {
+    acc[o.status] = (acc[o.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  const status_order = ['pending', 'approved', 'preparing', 'ready', 'served', 'cancelled'];
+  const orders_by_status_rows = status_order.map((status) => ({
+    status,
+    count: orders_by_status[status] || 0,
+  }));
+
+  res.json({
+    period,
+    total_orders: countPeriod,
+    orders_today: countToday,
+    total_revenue: revenuePeriod,
+    revenue_today: revenueToday,
+    avg_order_value: countPeriod ? (revenuePeriod / countPeriod).toFixed(2) : '0',
+    completion_rate: countPeriod ? ((completedOrders / countPeriod) * 100).toFixed(1) : '0',
+    orders_by_status,
+    orders_by_status_rows,
+    popular_items,
+    hourly_orders,
+    revenue_by_day,
+  });
 });
 
 export default router;

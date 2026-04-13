@@ -1,6 +1,11 @@
 import { Link } from 'react-router-dom';
 import { QrCode, ArrowRight, Mountain, Utensils, Hotel, CheckCircle, ShieldCheck, Zap } from 'lucide-react';
 import MandalaBackground from '../components/patterns/MandalaBackground';
+import { DEMO_MODE } from '../lib/supabase';
+
+/** Demo menu paths: in-memory demo uses himalayan-kitchen; live Supabase uses seeded tenants. */
+const MENU_TABLE = DEMO_MODE ? '/menu?r=himalayan-kitchen&table=1' : '/menu/hotel-tashi-delek?table=T1';
+const MENU_ROOM  = DEMO_MODE ? '/menu?r=himalayan-kitchen&room=101' : '/menu/hotel-tashi-delek?table=R101';
 
 export default function HomePage() {
   return (
@@ -8,16 +13,20 @@ export default function HomePage() {
       {/* Nav */}
       <nav className="relative z-10 max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-primary rounded-xl flex items-center justify-center shadow-md">
-            <Mountain size={18} className="text-white" />
-          </div>
+          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-md" />
           <div>
             <span className="text-base font-black text-ink">Himbyte</span>
             <span className="hidden sm:inline text-xs text-muted ml-2">Nepal's Restaurant OS</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link to="/merchant" className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
+          <Link to="/pricing" className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
+            Pricing
+          </Link>
+          <Link to="/register" className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
+            List your venue
+          </Link>
+          <Link to={DEMO_MODE ? '/merchant' : '/login'} className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
             Staff Login
           </Link>
           <Link to="/admin" className="bg-primary text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-primary-dark transition-colors shadow-sm">
@@ -46,11 +55,11 @@ export default function HomePage() {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link to="/menu?r=himalayan-kitchen&table=1"
+            <Link to={MENU_TABLE}
               className="inline-flex items-center gap-2.5 bg-primary text-white font-bold px-7 py-3.5 rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary-dark transition-colors text-sm">
               <QrCode size={18} /> Try the Demo Menu
             </Link>
-            <Link to="/merchant"
+            <Link to={DEMO_MODE ? '/merchant' : '/login'}
               className="inline-flex items-center gap-2.5 bg-surface text-ink font-bold px-7 py-3.5 rounded-2xl border border-border hover:border-primary/30 transition-colors text-sm">
               View Staff Dashboard <ArrowRight size={16} />
             </Link>
@@ -102,8 +111,8 @@ export default function HomePage() {
           <p className="text-white/50 text-xs font-semibold uppercase tracking-widest mb-5">Explore the Demo</p>
           <div className="flex flex-wrap items-center justify-center gap-3">
             {[
-              { label: 'Customer Menu',    to: '/menu?r=himalayan-kitchen&table=1',      icon: Utensils },
-              { label: 'Room Service',     to: '/menu?r=himalayan-kitchen&room=101',      icon: Hotel },
+              { label: 'Customer Menu',    to: MENU_TABLE,                                icon: Utensils },
+              { label: 'Room Service',     to: MENU_ROOM,                                 icon: Hotel },
               { label: 'Merchant Orders',  to: '/merchant/orders',                        icon: Zap },
               { label: 'Kitchen Display',  to: '/merchant/kitchen',                       icon: CheckCircle },
               { label: 'Admin Dashboard',  to: '/admin',                                  icon: Mountain },

@@ -1,18 +1,34 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, ChefHat, Package,
-  BarChart3, Menu, X, Bell, LogOut, Building2, QrCode
+  BarChart3, Menu, X, LogOut, Building2, QrCode, Receipt, FileSpreadsheet, Bell, Truck, Users,
 } from 'lucide-react';
+import useAuthStore from '../../stores/authStore';
+import { DEMO_MODE } from '../../lib/supabase';
 
-const merchantNav = [
+const ownerNav = [
   { to: '/merchant',           icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/merchant/orders',    icon: ClipboardList,   label: 'Order Gate'  },
   { to: '/merchant/kitchen',   icon: ChefHat,         label: 'Kitchen KDS' },
-  { to: '/merchant/inventory', icon: Package,         label: 'Inventory'   },
+  { to: '/merchant/bills',     icon: Receipt,         label: 'Table Bills' },
+  { to: '/merchant/guest-requests', icon: Bell,      label: 'Guest requests' },
+  { to: '/merchant/receipts',  icon: FileSpreadsheet, label: 'Receipts & VAT' },
+  { to: '/merchant/inventory', icon: Package,         label: 'Menu & stock' },
   { to: '/merchant/analytics', icon: BarChart3,       label: 'Analytics'   },
-  { to: '/merchant/qrcodes',   icon: QrCode,          label: 'QR Codes'    },
+  { to: '/merchant/vendor-due', icon: Truck,          label: 'Vendor due'  },
+  { to: '/merchant/hr',        icon: Users,           label: 'HR & team'   },
+  { to: '/merchant/tables',    icon: QrCode,          label: 'Tables & rooms' },
+];
+
+const staffNav = [
+  { to: '/merchant/orders',    icon: ClipboardList,   label: 'Order Gate', end: true },
+  { to: '/merchant/kitchen',   icon: ChefHat,         label: 'Kitchen KDS' },
+  { to: '/merchant/bills',     icon: Receipt,         label: 'Table Bills' },
+  { to: '/merchant/guest-requests', icon: Bell,      label: 'Guest requests' },
+  { to: '/merchant/receipts',  icon: FileSpreadsheet, label: 'Receipts & VAT' },
+  { to: '/merchant/inventory', icon: Package,         label: 'Menu & stock' },
 ];
 
 const adminNav = [
@@ -21,15 +37,12 @@ const adminNav = [
   { to: '/admin/analytics',    icon: BarChart3,       label: 'Analytics'    },
 ];
 
-function SidebarContent({ nav, title, onClose }) {
+function SidebarContent({ nav, title, onClose, profile, onSignOut }) {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Brand */}
       <div className="px-5 py-5 flex items-center justify-between border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-gold rounded-xl flex items-center justify-center shadow-lg">
-            <span className="text-ink font-black text-base">H</span>
-          </div>
+          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-lg" />
           <div>
             <p className="text-white font-bold text-sm leading-tight">Himbyte</p>
             <p className="text-white/40 text-[10px]">{title}</p>
@@ -42,7 +55,6 @@ function SidebarContent({ nav, title, onClose }) {
         )}
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         {nav.map((item) => (
           <NavLink key={item.to} to={item.to} end={item.end} onClick={onClose}
@@ -58,11 +70,16 @@ function SidebarContent({ nav, title, onClose }) {
         ))}
       </nav>
 
-      {/* Footer */}
       <div className="p-4 border-t border-white/10">
-        <button className="flex items-center gap-2 text-white/40 hover:text-white text-sm px-3 py-2 w-full transition-colors rounded-xl hover:bg-white/5">
+        {!DEMO_MODE && profile && (
+          <div className="px-3 py-2 mb-2">
+            <p className="text-white/80 text-xs font-semibold truncate">{profile.full_name}</p>
+            <p className="text-white/30 text-[10px] capitalize">{profile.role?.replace('_', ' ')}</p>
+          </div>
+        )}
+        <button type="button" onClick={onSignOut} className="flex items-center gap-2 text-white/40 hover:text-white text-sm px-3 py-2 w-full transition-colors rounded-xl hover:bg-white/5">
           <LogOut size={15} />
-          Sign out
+          {DEMO_MODE ? 'Exit Demo' : 'Sign out'}
         </button>
       </div>
     </div>
@@ -71,14 +88,31 @@ function SidebarContent({ nav, title, onClose }) {
 
 export default function DashboardLayout({ variant = 'merchant' }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const nav   = variant === 'admin' ? adminNav : merchantNav;
-  const title = variant === 'admin' ? 'Super Admin' : 'Merchant';
+  const { profile, signOut } = useAuthStore();
+  const navigate = useNavigate();
+
+  let nav, title;
+  if (variant === 'admin') {
+    nav = adminNav;
+    title = 'Super Admin';
+  } else if (profile?.role === 'restaurant_admin') {
+    nav = ownerNav;
+    title = 'Owner';
+  } else {
+    nav = staffNav;
+    title = 'Staff';
+  }
+
+  async function handleSignOut() {
+    await signOut();
+    window.location.href = DEMO_MODE ? '/' : '/login';
+  }
 
   return (
     <div className="min-h-screen bg-canvas flex">
       {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 bg-sidebar bg-dhaka">
-        <SidebarContent nav={nav} title={title} />
+        <SidebarContent nav={nav} title={title} profile={profile} onSignOut={handleSignOut} />
       </aside>
 
       {/* Mobile sidebar */}
@@ -87,39 +121,26 @@ export default function DashboardLayout({ variant = 'merchant' }) {
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               onClick={() => setSidebarOpen(false)}
-              className="fixed inset-0 bg-black/50 z-40 lg:hidden" />
-            <motion.aside
-              initial={{ x: -260 }} animate={{ x: 0 }} exit={{ x: -260 }}
-              transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-              className="fixed inset-y-0 left-0 w-60 bg-sidebar bg-dhaka z-50 lg:hidden flex flex-col">
-              <SidebarContent nav={nav} title={title} onClose={() => setSidebarOpen(false)} />
+              className="fixed inset-0 bg-black/40 z-40 lg:hidden" />
+            <motion.aside initial={{ x: -240 }} animate={{ x: 0 }} exit={{ x: -240 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 350 }}
+              className="fixed inset-y-0 left-0 w-60 bg-sidebar bg-dhaka z-50 flex flex-col lg:hidden">
+              <SidebarContent nav={nav} title={title} onClose={() => setSidebarOpen(false)} profile={profile} onSignOut={handleSignOut} />
             </motion.aside>
           </>
         )}
       </AnimatePresence>
 
-      {/* Main */}
-      <div className="lg:pl-60 flex-1 flex flex-col">
-        {/* Topbar */}
-        <header className="sticky top-0 z-20 glass border-b border-border">
-          <div className="flex items-center justify-between px-4 lg:px-6 py-3">
-            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-canvas-dark">
-              <Menu size={20} className="text-ink" />
-            </button>
-            <div className="flex-1" />
-            <div className="flex items-center gap-2">
-              <button className="relative p-2 hover:bg-canvas-dark rounded-xl transition-colors">
-                <Bell size={18} className="text-muted" />
-                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-gold rounded-full" />
-              </button>
-              <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                <span className="text-primary font-bold text-xs">S</span>
-              </div>
-            </div>
-          </div>
+      {/* Main content */}
+      <div className="flex-1 lg:ml-60 flex flex-col min-h-screen">
+        <header className="lg:hidden sticky top-0 z-30 bg-surface border-b border-border px-4 py-3 flex items-center gap-3">
+          <button onClick={() => setSidebarOpen(true)} className="text-ink">
+            <Menu size={20} />
+          </button>
+          <span className="text-sm font-bold text-ink">Himbyte</span>
         </header>
 
-        <main className="flex-1 p-4 lg:p-6">
+        <main className="flex-1 p-5 lg:p-8">
           <Outlet />
         </main>
       </div>

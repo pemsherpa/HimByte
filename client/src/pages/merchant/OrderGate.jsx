@@ -1,125 +1,45 @@
-import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { Bell, CheckCircle, ChefHat, Clock, Eye, XCircle, ArrowRight } from 'lucide-react';
+import { useMemo } from 'react';
+import { AnimatePresence } from 'framer-motion';
+import { Bell, CheckCircle, ChefHat, Clock } from 'lucide-react';
 import { api } from '../../lib/api';
-import { DEMO_RESTAURANT_ID } from '../../lib/constants';
+import useAuthStore from '../../stores/authStore';
 import { useOrderStore } from '../../stores/orderStore';
-import Badge from '../../components/ui/Badge';
-import Button from '../../components/ui/Button';
+import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
+import { useStaffOrdersBootstrap } from '../../hooks/useStaffOrdersBootstrap';
+import KdsOrderCard from '../../components/merchant/kds-order-card';
+import PendingItemsSummary from '../../components/merchant/pending-items-summary';
 import Card from '../../components/ui/Card';
 import toast from 'react-hot-toast';
+import { getOrderUrgency, URGENCY_STYLES } from '../../lib/orderUrgency';
 
-const STATUS_NEXT = { approved: 'preparing', preparing: 'ready', ready: 'served' };
-const STATUS_LABEL = { preparing: 'Start Cooking', ready: 'Mark Ready', served: 'Mark Served' };
-
-function timeAgo(iso) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return 'just now';
-  if (m < 60) return `${m}m ago`;
-  return `${Math.floor(m / 60)}h ago`;
-}
-
-function OrderCard({ order, onApprove, onReject, onAdvance, isPending }) {
-  const [expanded, setExpanded] = useState(false);
-  const next = STATUS_NEXT[order.status];
-  const elapsed = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
-  const isLate  = elapsed > 15;
-
-  return (
-    <motion.div layout initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}>
-      <Card className={`overflow-hidden ${isPending ? 'border-l-4 border-l-gold' : ''} ${isLate && !isPending ? 'border-l-4 border-l-danger' : ''}`}>
-        {/* Header */}
-        <div className={`px-4 py-2.5 flex items-center justify-between
-          ${isPending ? 'bg-gold-soft' : 'bg-canvas'}`}>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-ink">
-              {order.tables_rooms?.identifier || 'Order'}
-            </span>
-            <Badge status={order.status} />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`text-xs font-semibold ${isLate ? 'text-danger' : 'text-muted'}`}>
-              <Clock size={11} className="inline mr-0.5" />{timeAgo(order.created_at)}
-            </span>
-            <span className="text-sm font-black text-ink">Rs. {Number(order.total_price).toLocaleString()}</span>
-          </div>
-        </div>
-
-        {/* Items toggle */}
-        <div className="px-4 pt-2">
-          <button onClick={() => setExpanded(!expanded)}
-            className="flex items-center gap-1 text-xs text-primary font-medium mb-2 hover:underline">
-            <Eye size={11} /> {expanded ? 'Hide' : 'Show'} {order.order_items?.length || 0} items
-          </button>
-
-          <AnimatePresence>
-            {expanded && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                <div className="bg-canvas rounded-xl p-3 mb-3 space-y-1.5">
-                  {order.order_items?.map((oi) => (
-                    <div key={oi.id} className="flex items-center justify-between text-sm">
-                      <span className="text-ink">
-                        <span className="font-bold text-primary">{oi.quantity}×</span>{' '}
-                        {oi.menu_items?.name || 'Item'}
-                      </span>
-                      <span className="text-muted">Rs. {(oi.price_at_time * oi.quantity).toLocaleString()}</span>
-                    </div>
-                  ))}
-                  {order.notes && (
-                    <p className="text-xs text-warning italic pt-1.5 border-t border-border">
-                      Note: {order.notes}
-                    </p>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {/* Actions */}
-        <div className="px-4 pb-4 flex gap-2">
-          {isPending ? (
-            <>
-              <Button variant="success" size="sm" className="flex-1" onClick={() => onApprove(order.id)}>
-                <CheckCircle size={15} /> Approve
-              </Button>
-              <Button variant="danger" size="sm" onClick={() => onReject(order.id)}>
-                <XCircle size={15} />
-              </Button>
-            </>
-          ) : next ? (
-            <Button variant={next === 'served' ? 'success' : 'gold'} size="sm" className="flex-1"
-              onClick={() => onAdvance(order.id, next)}>
-              <ArrowRight size={15} /> {STATUS_LABEL[next]}
-            </Button>
-          ) : null}
-        </div>
-      </Card>
-    </motion.div>
-  );
+function countUrgencyBands(orders) {
+  let fresh = 0;
+  let warm = 0;
+  let hot = 0;
+  for (const o of orders || []) {
+    const { band } = getOrderUrgency(o.created_at);
+    if (band === 'fresh') fresh += 1;
+    else if (band === 'warm') warm += 1;
+    else hot += 1;
+  }
+  return { fresh, warm, hot };
 }
 
 export default function OrderGate() {
-  const { pendingOrders, activeOrders, setPendingOrders, setActiveOrders, moveToActive, removeFromPending, updateStatus } = useOrderStore();
-  const [loading, setLoading] = useState(true);
+  const { pendingOrders, activeOrders, moveToActive, removeFromPending, updateStatus } = useOrderStore();
+  const { restaurantId } = useAuthStore();
+  const loading = useStaffOrdersBootstrap(restaurantId);
 
-  useEffect(() => {
-    Promise.all([
-      api.getRestaurantOrders(DEMO_RESTAURANT_ID, 'pending'),
-      api.getRestaurantOrders(DEMO_RESTAURANT_ID),
-    ]).then(([pending, all]) => {
-      setPendingOrders(pending);
-      setActiveOrders(all.filter((o) => ['approved', 'preparing', 'ready'].includes(o.status)));
-    }).catch(() => toast.error('Failed to load orders')).finally(() => setLoading(false));
-  }, [setPendingOrders, setActiveOrders]);
+  useRealtimeOrders(restaurantId);
 
   async function handleApprove(orderId) {
     try {
       await api.updateOrderStatus(orderId, 'approved');
       moveToActive(orderId);
       toast.success('Order approved — sent to kitchen!');
-    } catch { toast.error('Failed to approve order'); }
+    } catch {
+      toast.error('Failed to approve order');
+    }
   }
 
   async function handleReject(orderId) {
@@ -127,7 +47,9 @@ export default function OrderGate() {
       await api.updateOrderStatus(orderId, 'cancelled');
       removeFromPending(orderId);
       toast('Order rejected', { icon: '❌' });
-    } catch { toast.error('Failed to reject order'); }
+    } catch {
+      toast.error('Failed to reject order');
+    }
   }
 
   async function handleAdvance(orderId, status) {
@@ -136,66 +58,111 @@ export default function OrderGate() {
       updateStatus(orderId, status);
       const msg = { preparing: 'Cooking started!', ready: 'Order ready for pickup!', served: 'Order served ✓' };
       toast.success(msg[status] || `Moved to ${status}`);
-    } catch { toast.error('Failed to update order'); }
+    } catch {
+      toast.error('Failed to update order');
+    }
   }
 
   const totalPending = pendingOrders.length;
+  const inKitchen = activeOrders.filter((o) => ['approved', 'preparing', 'ready'].includes(o.status)).length;
+  const allForSummary = useMemo(() => [...pendingOrders, ...activeOrders], [pendingOrders, activeOrders]);
+  const bands = useMemo(() => countUrgencyBands(allForSummary), [allForSummary]);
+  const uf = URGENCY_STYLES.fresh;
+  const uw = URGENCY_STYLES.warm;
+  const uh = URGENCY_STYLES.hot;
 
   return (
     <div>
-      <div className="mb-6">
+      <div className="mb-5">
         <h1 className="text-2xl font-black text-ink">Order Gate</h1>
         <p className="text-sm text-muted mt-0.5">Approve incoming orders and track the kitchen queue.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* ── Left: Incoming / Pending ── */}
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <Bell size={17} className="text-gold-dark" />
-            <h2 className="font-bold text-ink text-sm">Incoming Orders</h2>
-            {totalPending > 0 && (
-              <span className="bg-gold text-ink text-xs px-2 py-0.5 rounded-full font-black animate-status-pulse">
-                {totalPending}
-              </span>
-            )}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <Card className="p-4 flex flex-col justify-center min-h-[88px]">
+          <p className="text-[11px] font-bold text-muted uppercase tracking-wide">Incoming</p>
+          <p className="text-2xl font-black text-ink">{totalPending}</p>
+        </Card>
+        <Card className="p-4 flex flex-col justify-center min-h-[88px]">
+          <p className="text-[11px] font-bold text-muted uppercase tracking-wide">In kitchen</p>
+          <p className="text-2xl font-black text-primary">{inKitchen}</p>
+        </Card>
+        <Card className={`p-4 col-span-2 lg:col-span-2 ${uf.header} border border-border rounded-2xl`}>
+          <p className="text-[11px] font-bold text-muted uppercase tracking-wide mb-2">Wait time (queue)</p>
+          <div className="flex flex-wrap gap-2">
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-xl ${uf.chip}`}>Green under 5 min · {bands.fresh}</span>
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-xl ${uw.chip}`}>Yellow 5–9 min · {bands.warm}</span>
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-xl ${uh.chip}`}>Red 10+ min · {bands.hot}</span>
           </div>
-          <div className="space-y-3">
-            <AnimatePresence mode="popLayout">
-              {pendingOrders.map((o) => (
-                <OrderCard key={o.id} order={o} isPending onApprove={handleApprove} onReject={handleReject} onAdvance={handleAdvance} />
-              ))}
-            </AnimatePresence>
+        </Card>
+      </div>
+
+      <div className="flex flex-col xl:flex-row gap-5 xl:items-start">
+        <div className="flex-1 min-w-0 space-y-8">
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Bell size={18} className="text-gold-dark" />
+              <h2 className="font-black text-ink text-base">Incoming orders</h2>
+              {totalPending > 0 && (
+                <span className="bg-gold text-ink text-xs px-2.5 py-0.5 rounded-full font-black animate-status-pulse">
+                  {totalPending}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 min-[1100px]:grid-cols-2 gap-4">
+              <AnimatePresence mode="popLayout">
+                {pendingOrders.map((o) => (
+                  <KdsOrderCard
+                    key={o.id}
+                    order={o}
+                    mode="gate"
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onAdvance={handleAdvance}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
             {!loading && pendingOrders.length === 0 && (
-              <Card className="p-8 text-center text-muted">
-                <CheckCircle size={28} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">All orders handled!</p>
+              <Card className="p-10 text-center text-muted">
+                <CheckCircle size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm font-medium">All orders handled!</p>
               </Card>
             )}
-          </div>
+          </section>
+
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <ChefHat size={18} className="text-primary" />
+              <h2 className="font-black text-ink text-base">Active orders</h2>
+              <span className="text-xs text-muted font-medium">{activeOrders.length} in progress</span>
+            </div>
+            <div className="grid grid-cols-1 min-[1100px]:grid-cols-2 gap-4">
+              <AnimatePresence mode="popLayout">
+                {activeOrders.map((o) => (
+                  <KdsOrderCard
+                    key={o.id}
+                    order={o}
+                    mode="gate"
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onAdvance={handleAdvance}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+            {!loading && activeOrders.length === 0 && (
+              <Card className="p-10 text-center text-muted">
+                <Clock size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm font-medium">No active orders</p>
+              </Card>
+            )}
+          </section>
         </div>
 
-        {/* ── Right: Active Orders ── */}
-        <div>
-          <div className="flex items-center gap-2 mb-4">
-            <ChefHat size={17} className="text-primary" />
-            <h2 className="font-bold text-ink text-sm">Active Orders</h2>
-            <span className="text-xs text-muted">{activeOrders.length} in progress</span>
-          </div>
-          <div className="space-y-3">
-            <AnimatePresence mode="popLayout">
-              {activeOrders.map((o) => (
-                <OrderCard key={o.id} order={o} onApprove={handleApprove} onReject={handleReject} onAdvance={handleAdvance} />
-              ))}
-            </AnimatePresence>
-            {!loading && activeOrders.length === 0 && (
-              <Card className="p-8 text-center text-muted">
-                <Clock size={28} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No active orders</p>
-              </Card>
-            )}
-          </div>
-        </div>
+        <aside className="w-full xl:w-96 xl:shrink-0 xl:sticky xl:top-4">
+          <PendingItemsSummary orders={allForSummary} title="Pending item summary" />
+        </aside>
       </div>
     </div>
   );

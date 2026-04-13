@@ -3,17 +3,24 @@ import { X, ShoppingBag, Minus, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useCartStore } from '../../stores/cartStore';
+import useGuestStore from '../../stores/guestStore';
 import { api } from '../../lib/api';
+import { DEMO_MODE, supabase } from '../../lib/supabase';
 import Button from './Button';
 
 export default function CartDrawer({ isOpen, onClose, onOrderPlaced }) {
   const { items, restaurantId, tableRoomId, sessionId, updateQuantity, removeItem, getTotal, clearCart } = useCartStore();
+  const { phone: guestPhone, email: guestEmail, verified: guestVerified } = useGuestStore();
   const [notes, setNotes] = useState('');
   const [placing, setPlacing] = useState(false);
   const total = getTotal();
 
   async function handlePlace() {
     if (!items.length) return;
+    if (!DEMO_MODE && supabase && (!guestVerified || !guestPhone || !guestEmail)) {
+      toast.error('Please complete guest check-in (phone & email) before ordering.');
+      return;
+    }
     setPlacing(true);
     try {
       const order = await api.placeOrder({
@@ -21,6 +28,8 @@ export default function CartDrawer({ isOpen, onClose, onOrderPlaced }) {
         table_room_id: tableRoomId,
         session_id: sessionId,
         notes: notes || null,
+        guest_phone: !DEMO_MODE && supabase ? guestPhone : undefined,
+        guest_email: !DEMO_MODE && supabase ? guestEmail : undefined,
         items: items.map((i) => ({
           menu_item_id: i.menu_item_id,
           price_at_time: i.price_at_time,   // schema field

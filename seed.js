@@ -7,9 +7,9 @@
  *   2. Run: node seed.js
  *
  * Creates:
- *   • Hotel Tashi Delek, Dingboche  (slug: tashi-delek)
+ *   • Hotel Tashi Delek, Dingboche  (slug: hotel-tashi-delek)
  *   • Ohana Cafe, Boudha            (slug: ohana-cafe)
- *   • Admin + Staff + Kitchen accounts for each
+ *   • Admin + Staff accounts for each (must match working.md)
  *   • Full menu with categories
  *   • Tables & rooms with permanent QR URLs
  */
@@ -41,19 +41,107 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
 function ok(label, data) { console.log(`  ✓ ${label}`); return data; }
 function fail(label, err) { console.error(`  ✗ ${label}:`, err.message); throw err; }
 
+async function listAllAuthUsers() {
+  const all = [];
+  let page = 1;
+  const perPage = 200;
+  for (;;) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    all.push(...(data?.users || []));
+    if (!data?.users?.length || data.users.length < perPage) break;
+    page += 1;
+  }
+  return all;
+}
+
+/** Sample kitchen flow data for merchant dashboards (skipped if orders already exist). */
+async function seedSampleOrders(restaurantId, tableRoomId, menuItems) {
+  if (!tableRoomId || !menuItems?.length) return;
+
+  const { count, error: cErr } = await supabase
+    .from('orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('restaurant_id', restaurantId);
+  if (cErr) fail('count orders', cErr);
+  if ((count || 0) > 0) {
+    console.log('  ↻  Sample orders skipped (restaurant already has orders)');
+    return;
+  }
+
+  const pick = (i) => menuItems[Math.abs(i) % menuItems.length];
+  const scenarios = [
+    { status: 'pending',   indices: [0, 1],   notes: 'Guest — awaiting approval' },
+    { status: 'pending',   indices: [2],     notes: 'Room service request' },
+    { status: 'approved',  indices: [1, 3],   notes: null },
+    { status: 'preparing', indices: [3],     notes: null },
+    { status: 'ready',     indices: [0, 4], notes: null },
+    { status: 'served',    indices: [4, 5 % menuItems.length], notes: null },
+  ];
+
+  for (const sc of scenarios) {
+    const lines = sc.indices.map((i) => pick(i));
+    const total_price = lines.reduce((s, m) => s + Number(m.price), 0);
+    const { data: order, error: oErr } = await supabase
+      .from('orders')
+      .insert({
+        restaurant_id: restaurantId,
+        table_room_id: tableRoomId,
+        status: sc.status,
+        total_price,
+        notes: sc.notes,
+        guest_phone: '+9779800000001',
+        guest_email: 'demo-guest@himbyte.app',
+      })
+      .select()
+      .single();
+    if (oErr) fail(`insert demo order (${sc.status})`, oErr);
+
+    const orderItems = lines.map((m) => ({
+      order_id: order.id,
+      menu_item_id: m.id,
+      quantity: 1,
+      price_at_time: Number(m.price),
+    }));
+    const { error: oiErr } = await supabase.from('order_items').insert(orderItems);
+    if (oiErr) fail('insert demo order_items', oiErr);
+  }
+  ok(`Sample orders: ${scenarios.length} with line items`, true);
+}
+
 async function createUser(email, password, fullName, role, restaurantId) {
-  // Create auth user
+  const norm = String(email).trim().toLowerCase();
+
   const { data: authData, error: authErr } = await supabase.auth.admin.createUser({
-    email, password, email_confirm: true,
+    email: norm,
+    password,
+    email_confirm: true,
     user_metadata: { full_name: fullName },
   });
+
   if (authErr) {
-    if (authErr.message.includes('already been registered')) {
-      // User exists — look up their ID
-      const { data: list } = await supabase.auth.admin.listUsers();
-      const existing = list?.users?.find((u) => u.email === email);
+    const exists =
+      authErr.message?.includes('already been registered') ||
+      authErr.message?.includes('already registered') ||
+      authErr.status === 422;
+    if (exists) {
+      const users = await listAllAuthUsers();
+      const existing = users.find((u) => String(u.email || '').toLowerCase() === norm);
       if (existing) {
-        await supabase.from('profiles').upsert({ id: existing.id, restaurant_id: restaurantId, full_name: fullName, role });
+        const { error: pwdErr } = await supabase.auth.admin.updateUserById(existing.id, {
+          password,
+          email_confirm: true,
+        });
+        if (pwdErr) fail(`updateUser password (${email})`, pwdErr);
+        const { error: profileErr } = await supabase.from('profiles').upsert({
+          id: existing.id,
+          restaurant_id: restaurantId,
+          full_name: fullName,
+          role,
+          email: norm,
+        });
+        if (profileErr) fail(`profile for ${email}`, profileErr);
+        console.log(`  ↻  Reset password + profile for existing user: ${email}`);
         return existing;
       }
     }
@@ -62,7 +150,7 @@ async function createUser(email, password, fullName, role, restaurantId) {
 
   const user = authData.user;
   const { error: profileErr } = await supabase.from('profiles').upsert({
-    id: user.id, restaurant_id: restaurantId, full_name: fullName, role,
+    id: user.id, restaurant_id: restaurantId, full_name: fullName, role, email: norm,
   });
   if (profileErr) fail(`profile for ${email}`, profileErr);
 
@@ -79,17 +167,19 @@ const RESTAURANTS = [
   {
     restaurant: {
       name: 'Hotel Tashi Delek',
-      slug: 'tashi-delek',
+      slug: 'hotel-tashi-delek',
       logo_url: null,
       address: 'Dingboche Village, Solukhumbu, Everest Region',
       phone: '+977-9812345678',
       vat_pan_number: '302847561',
       is_active: true,
+      venue_type: 'hotel',
     },
     accounts: [
-      { email: 'admin@tashidelek.com',   password: 'TashiDelek@2026',  name: 'Tashi Sherpa',     role: 'restaurant_admin' },
-      { email: 'staff@tashidelek.com',   password: 'TDStaff@2026',     name: 'Dawa Lama',        role: 'staff'            },
-      { email: 'kitchen@tashidelek.com', password: 'TDKitchen@2026',   name: 'Mingma Dorje',     role: 'staff'            },
+      { email: 'admin@tashidelek.np', password: 'TashiDelek@2026', name: 'Hotel Tashi Delek Admin', role: 'restaurant_admin' },
+      { email: 'staff@tashidelek.np', password: 'TashiDelek@2026', name: 'Tashi Delek Staff', role: 'staff' },
+      { email: 'admin@tashidelek.com', password: 'TashiDelek@2026', name: 'Hotel Tashi Delek Admin', role: 'restaurant_admin' },
+      { email: 'staff@tashidelek.com', password: 'TashiDelek@2026', name: 'Tashi Delek Staff', role: 'staff' },
     ],
     tables: [
       { identifier: 'Table 1', type: 'table' },
@@ -173,11 +263,13 @@ const RESTAURANTS = [
       phone: '+977-9801234567',
       vat_pan_number: '401928374',
       is_active: true,
+      venue_type: 'restaurant',
     },
     accounts: [
-      { email: 'admin@ohanacafe.com',   password: 'OhanaCafe@2026',  name: 'Priya Maharjan',   role: 'restaurant_admin' },
-      { email: 'staff@ohanacafe.com',   password: 'OStaff@2026',     name: 'Rohan Shakya',     role: 'staff'            },
-      { email: 'kitchen@ohanacafe.com', password: 'OKitchen@2026',   name: 'Sunita Tamang',    role: 'staff'            },
+      { email: 'admin@ohanacafe.np', password: 'OhanaCafe@2026', name: 'Ohana Cafe Admin', role: 'restaurant_admin' },
+      { email: 'staff@ohanacafe.np', password: 'OhanaCafe@2026', name: 'Ohana Cafe Staff', role: 'staff' },
+      { email: 'admin@ohanacafe.com', password: 'OhanaCafe@2026', name: 'Ohana Cafe Admin', role: 'restaurant_admin' },
+      { email: 'staff@ohanacafe.com', password: 'OhanaCafe@2026', name: 'Ohana Cafe Staff', role: 'staff' },
     ],
     tables: [
       { identifier: 'Table 1',  type: 'table' },
@@ -325,6 +417,8 @@ async function seed() {
       await supabase.from('tables_rooms').update({ qr_code_url: upd.qr_code_url }).eq('id', upd.id);
     }
     ok(`Tables/Rooms: ${tables.length} with QR URLs`, tables);
+
+    await seedSampleOrders(rid, tables[0]?.id, menuResult);
 
     results.push({
       restaurant: data.restaurant.name,
