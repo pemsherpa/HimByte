@@ -35,6 +35,8 @@ app.use(cors({
 }));
 app.use(morgan('dev'));
 app.use(express.json({ limit: '12mb' }));
+// eSewa return redirects may POST form fields (application/x-www-form-urlencoded)
+app.use(express.urlencoded({ extended: false }));
 
 app.get('/api/health', (req, res) => {
   res.json({

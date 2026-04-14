@@ -4,6 +4,7 @@ import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { api } from '../../lib/api';
 import toast from 'react-hot-toast';
 import Card from '../../components/ui/Card';
+import { extractEsewaDataFromUrl } from '../../lib/esewaReturnData';
 
 /** eSewa success redirect (?data= base64 JSON) — verify signature server-side and close the table check. */
 export function EsewaSuccessPage() {
@@ -12,7 +13,7 @@ export function EsewaSuccessPage() {
   const [detail, setDetail] = useState(null);
 
   useEffect(() => {
-    const data = searchParams.get('data');
+    const data = searchParams.get('data') || extractEsewaDataFromUrl(window.location.href);
     if (!data) {
       setPhase('error');
       setDetail('Missing payment data from eSewa. Return to Table Bills and try again.');

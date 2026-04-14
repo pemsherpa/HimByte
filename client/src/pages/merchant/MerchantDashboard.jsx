@@ -6,6 +6,34 @@ import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
+import { supabase, DEMO_MODE } from '../../lib/supabase';
+
+const CHIME_FREQUENCY = 880;
+const CHIME_DURATION = 0.3;
+
+function playNotificationChime() {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(CHIME_FREQUENCY, audioCtx.currentTime);
+    oscillator.frequency.setValueAtTime(CHIME_FREQUENCY * 1.25, audioCtx.currentTime + 0.1);
+    oscillator.frequency.setValueAtTime(CHIME_FREQUENCY * 1.5, audioCtx.currentTime + 0.2);
+
+    gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + CHIME_DURATION);
+
+    oscillator.start(audioCtx.currentTime);
+    oscillator.stop(audioCtx.currentTime + CHIME_DURATION);
+  } catch {
+    // ignore
+  }
+}
 
 export default function MerchantDashboard() {
   const [analytics, setAnalytics] = useState(null);
@@ -17,7 +45,8 @@ export default function MerchantDashboard() {
   useEffect(() => {
     if (!restaurantId) return;
     let cancelled = false;
-    Promise.all([
+
+    const load = () => Promise.all([
       api.getRestaurantAnalytics(restaurantId).catch(() => null),
       api.getRestaurantOrders(restaurantId).catch(() => []),
     ]).then(([a, orders]) => {
@@ -27,8 +56,48 @@ export default function MerchantDashboard() {
       list.sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
       setRecentOrders(list.slice(0, 5));
     });
+
+    load();
     return () => { cancelled = true; };
   }, [restaurantId, location.pathname, location.key]);
+
+  // Realtime: keep dashboard fresh + play chime on new incoming orders
+  useEffect(() => {
+    if (!restaurantId || DEMO_MODE || !supabase) return;
+    let t;
+    const debounced = (fn) => {
+      clearTimeout(t);
+      t = setTimeout(fn, 250);
+    };
+
+    const channel = supabase
+      .channel(`merchant-dashboard:${restaurantId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
+        (payload) => {
+          if (payload.new?.status === 'pending' && payload.old == null) {
+            playNotificationChime();
+          }
+          debounced(() => {
+            api.getRestaurantAnalytics(restaurantId).then(setAnalytics).catch(() => {});
+            api.getRestaurantOrders(restaurantId)
+              .then((orders) => {
+                const list = orders || [];
+                list.sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
+                setRecentOrders(list.slice(0, 5));
+              })
+              .catch(() => {});
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      clearTimeout(t);
+      supabase.removeChannel(channel);
+    };
+  }, [restaurantId]);
 
   useEffect(() => {
     if (!restaurantId) return;

@@ -3,8 +3,9 @@ import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import Card from '../../components/ui/Card';
-import { formatNpr, NEPAL_VAT_RATE } from '../../lib/vat';
+import { formatNpr } from '../../lib/vat';
 import toast from 'react-hot-toast';
+import { supabase, DEMO_MODE } from '../../lib/supabase';
 
 export default function MerchantReceipts() {
   const { restaurantId } = useAuthStore();
@@ -23,6 +24,29 @@ export default function MerchantReceipts() {
       .then(setRows)
       .catch(() => toast.error('Could not load receipts'))
       .finally(() => setLoading(false));
+  }, [restaurantId]);
+
+  useEffect(() => {
+    if (!restaurantId || DEMO_MODE || !supabase) return;
+    let t;
+    const debouncedReload = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        api.listReceipts(restaurantId).then(setRows).catch(() => {});
+      }, 250);
+    };
+    const channel = supabase
+      .channel(`receipts-sync:${restaurantId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'receipts', filter: `restaurant_id=eq.${restaurantId}` },
+        debouncedReload,
+      )
+      .subscribe();
+    return () => {
+      clearTimeout(t);
+      supabase.removeChannel(channel);
+    };
   }, [restaurantId]);
 
   async function handleExport() {
@@ -47,7 +71,7 @@ export default function MerchantReceipts() {
   if (!restaurantId) {
     return (
       <div>
-        <h1 className="text-2xl font-black text-ink">Receipts & VAT</h1>
+        <h1 className="text-2xl font-black text-ink">Receipts</h1>
         <p className="mt-3 text-sm text-muted">No restaurant linked to this login.</p>
       </div>
     );
@@ -65,9 +89,9 @@ export default function MerchantReceipts() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-2xl font-black text-ink">Receipts & VAT</h1>
+          <h1 className="text-2xl font-black text-ink">Receipts</h1>
           <p className="text-sm text-muted mt-0.5">
-            Guest-saved bills with {Math.round(NEPAL_VAT_RATE * 100)}% Nepal VAT breakdown — export for filing.
+            Saved bills and payment records — export for reporting.
           </p>
         </div>
         <button
@@ -108,7 +132,7 @@ export default function MerchantReceipts() {
                   <div className="text-right">
                     <p className="text-lg font-black text-ink">{formatNpr(r.total_amount)}</p>
                     <p className="text-[11px] text-muted">
-                      VAT {formatNpr(r.vat_amount)} · Sub {formatNpr(r.subtotal)}
+                      Subtotal {formatNpr(r.subtotal)}
                     </p>
                   </div>
                 </div>

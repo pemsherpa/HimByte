@@ -67,7 +67,6 @@ export function downloadSessionReceiptPdf(opts) {
     ]),
     foot: [
       ['Subtotal', '', formatMoney(subtotal)],
-      [`VAT (${Math.round(vatRate * 100)}%)`, '', formatMoney(vatAmount)],
       ['Total (NPR)', '', formatMoney(total)],
     ],
     theme: 'plain',

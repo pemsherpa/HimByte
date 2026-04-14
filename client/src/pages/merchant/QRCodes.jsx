@@ -1,18 +1,52 @@
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Download, Printer, Table2, BedDouble, RefreshCw, Plus } from 'lucide-react';
+import { Download, Printer, Table2, BedDouble, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import Card from '../../components/ui/Card';
 import toast from 'react-hot-toast';
+import { jsPDF } from 'jspdf';
 
 const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
 
-function QRCard({ location, slug }) {
+async function svgToPngDataUrl(svgEl, { size = 512, bg = '#ffffff' } = {}) {
+  const svgText = new XMLSerializer().serializeToString(svgEl);
+  const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+  const svgUrl = URL.createObjectURL(svgBlob);
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = svgUrl;
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = reject;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas not supported');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, size, size);
+    ctx.drawImage(img, 0, 0, size, size);
+    return canvas.toDataURL('image/png');
+  } finally {
+    URL.revokeObjectURL(svgUrl);
+  }
+}
+
+function downloadDataUrl(dataUrl, filename) {
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename;
+  a.click();
+}
+
+function QRCard({ location, slug, canDelete, onDeleted }) {
   const qrUrl = location.qr_code_url || `${APP_URL}/scan?r=${slug}&loc=${location.id}`;
   const ref   = useRef(null);
 
-  function handleDownload() {
+  function handleDownloadSvg() {
     const svg  = ref.current?.querySelector('svg');
     if (!svg) return;
     const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
@@ -22,6 +56,75 @@ function QRCard({ location, slug }) {
     a.download = `qr-${location.identifier.replace(/\s+/g, '-').toLowerCase()}.svg`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function handleDownloadPng() {
+    const svg = ref.current?.querySelector('svg');
+    if (!svg) return;
+    try {
+      const dataUrl = await svgToPngDataUrl(svg, { size: 768, bg: '#ffffff' });
+      downloadDataUrl(dataUrl, `qr-${location.identifier.replace(/\s+/g, '-').toLowerCase()}.png`);
+    } catch {
+      toast.error('Could not export PNG');
+    }
+  }
+
+  async function handleDownloadJpg() {
+    const svg = ref.current?.querySelector('svg');
+    if (!svg) return;
+    try {
+      const png = await svgToPngDataUrl(svg, { size: 768, bg: '#ffffff' });
+      // Convert PNG dataURL -> JPEG via canvas
+      const img = new Image();
+      img.src = png;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas not supported');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      const jpg = canvas.toDataURL('image/jpeg', 0.92);
+      downloadDataUrl(jpg, `qr-${location.identifier.replace(/\s+/g, '-').toLowerCase()}.jpg`);
+    } catch {
+      toast.error('Could not export JPG');
+    }
+  }
+
+  async function handleDownloadPdf() {
+    const svg = ref.current?.querySelector('svg');
+    if (!svg) return;
+    try {
+      const png = await svgToPngDataUrl(svg, { size: 768, bg: '#ffffff' });
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      let y = 64;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text(String(location.identifier || 'QR Code'), pageW / 2, y, { align: 'center' });
+      y += 14;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text('Scan to view menu & order', pageW / 2, y + 18, { align: 'center' });
+      doc.setTextColor(0);
+
+      const qrSize = 260;
+      const x = (pageW - qrSize) / 2;
+      doc.addImage(png, 'PNG', x, y + 44, qrSize, qrSize);
+
+      doc.setFontSize(8);
+      doc.setTextColor(120);
+      doc.text(qrUrl, pageW / 2, y + 44 + qrSize + 24, { align: 'center', maxWidth: pageW - 96 });
+      doc.save(`qr-${location.identifier.replace(/\s+/g, '-').toLowerCase()}.pdf`);
+    } catch {
+      toast.error('Could not export PDF');
+    }
   }
 
   function handlePrint() {
@@ -86,16 +189,48 @@ function QRCard({ location, slug }) {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-2 w-full">
-        <button onClick={handleDownload}
-          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-primary bg-primary-soft hover:bg-primary/20 px-3 py-2 rounded-xl transition-colors">
-          <Download size={13} /> SVG
+      <div className="grid grid-cols-2 gap-2 w-full">
+        <button onClick={handleDownloadPng}
+          className="flex items-center justify-center gap-1.5 text-xs font-semibold text-primary bg-primary-soft hover:bg-primary/20 px-3 py-2 rounded-xl transition-colors">
+          <Download size={13} /> PNG
+        </button>
+        <button onClick={handleDownloadJpg}
+          className="flex items-center justify-center gap-1.5 text-xs font-semibold text-primary bg-primary-soft hover:bg-primary/20 px-3 py-2 rounded-xl transition-colors">
+          <Download size={13} /> JPG
+        </button>
+        <button onClick={handleDownloadPdf}
+          className="flex items-center justify-center gap-1.5 text-xs font-semibold text-body bg-canvas hover:bg-canvas-dark px-3 py-2 rounded-xl transition-colors border border-border">
+          <Download size={13} /> PDF
         </button>
         <button onClick={handlePrint}
-          className="flex-1 flex items-center justify-center gap-1.5 text-xs font-semibold text-body bg-canvas hover:bg-canvas-dark px-3 py-2 rounded-xl transition-colors border border-border">
+          className="flex items-center justify-center gap-1.5 text-xs font-semibold text-body bg-canvas hover:bg-canvas-dark px-3 py-2 rounded-xl transition-colors border border-border">
           <Printer size={13} /> Print
         </button>
       </div>
+
+      <button onClick={handleDownloadSvg}
+        className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-muted hover:text-body underline underline-offset-4">
+        Download SVG (advanced)
+      </button>
+
+      {canDelete && (
+        <button
+          type="button"
+          onClick={async () => {
+            if (!window.confirm(`Delete ${location.identifier}? This cannot be undone.`)) return;
+            try {
+              await api.deleteTableRoom(location.restaurant_id, location.id);
+              toast.success('Deleted');
+              onDeleted?.();
+            } catch (e) {
+              toast.error(e?.message || 'Could not delete');
+            }
+          }}
+          className="w-full flex items-center justify-center gap-1.5 text-[11px] font-semibold text-danger hover:underline"
+        >
+          <Trash2 size={13} /> Delete
+        </button>
+      )}
     </Card>
   );
 }
@@ -109,6 +244,7 @@ export default function QRCodes() {
   const [newLocType, setNewLocType] = useState('table'); // 'table' | 'room'
   const [addingTable, setAddingTable] = useState(false);
   const { restaurantId, profile } = useAuthStore();
+  const canDelete = profile?.role === 'restaurant_admin' || profile?.role === 'super_admin';
 
   async function handleAddTable(e) {
     e.preventDefault();
@@ -270,7 +406,17 @@ export default function QRCodes() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {filtered.map((loc) => (
-            <QRCard key={loc.id} location={loc} slug={restaurant?.slug || 'venue'} />
+            <QRCard
+              key={loc.id}
+              location={loc}
+              slug={restaurant?.slug || 'venue'}
+              canDelete={canDelete}
+              onDeleted={async () => {
+                if (!restaurantId) return;
+                const locs = await api.getTablesRooms(restaurantId);
+                setLocations(locs);
+              }}
+            />
           ))}
         </div>
       )}

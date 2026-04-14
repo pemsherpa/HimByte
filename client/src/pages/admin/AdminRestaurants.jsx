@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Building2, MapPin, Hash, Loader2, Settings2 } from 'lucide-react';
+import { Building2, MapPin, Hash, Loader2, Settings2, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
@@ -62,6 +62,20 @@ export default function AdminRestaurants() {
       toast.error(err.message || 'Update failed');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDelete(r) {
+    if (!r?.id) return;
+    const ok = window.confirm(`Delete restaurant "${r.name}"?\n\nThis will permanently delete all tenant data (orders, menu, tables, receipts). Staff accounts will be detached but not removed.`);
+    if (!ok) return;
+    try {
+      await api.deleteRestaurant(r.id);
+      toast.success('Restaurant deleted');
+      setRestaurants((prev) => prev.filter((x) => x.id !== r.id));
+      if (editing?.id === r.id) setEditing(null);
+    } catch (err) {
+      toast.error(err.message || 'Delete failed');
     }
   }
 
@@ -143,6 +157,15 @@ export default function AdminRestaurants() {
                 >
                   <Settings2 size={14} className="text-primary" />
                   Subscription
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleDelete(r)}
+                  className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-danger/25 bg-danger-soft/40 text-xs font-bold text-danger hover:bg-danger-soft transition-colors"
+                >
+                  <Trash2 size={14} />
+                  Delete restaurant
                 </button>
 
                 {r.profiles?.length > 0 && (

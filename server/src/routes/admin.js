@@ -93,6 +93,27 @@ router.post('/restaurants', requireAuth, requireRole('super_admin'), async (req,
   res.status(201).json(data);
 });
 
+// Super Admin: Delete a restaurant tenant (keeps auth.users but detaches profiles)
+router.delete('/restaurants/:id', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const id = req.params.id;
+  if (!id) return res.status(400).json({ error: 'Restaurant id is required' });
+
+  // Detach staff profiles so FK does not block delete (auth users remain).
+  const { error: pErr } = await supabase
+    .from('profiles')
+    .update({ restaurant_id: null })
+    .eq('restaurant_id', id);
+  if (pErr) return res.status(500).json({ error: pErr.message });
+
+  const { error: dErr } = await supabase
+    .from('restaurants')
+    .delete()
+    .eq('id', id);
+
+  if (dErr) return res.status(500).json({ error: dErr.message });
+  return res.status(204).send();
+});
+
 // Super Admin: Global analytics
 router.get('/analytics', requireAuth, requireRole('super_admin'), async (req, res) => {
   const [restaurantsRes, ordersRes] = await Promise.all([

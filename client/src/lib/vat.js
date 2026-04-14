@@ -1,5 +1,8 @@
-/** Nepal VAT (standard rate) — IRD reference: 13% */
-export const NEPAL_VAT_RATE = 0.13;
+/**
+ * VAT is currently disabled across Himbyte billing.
+ * Keep helpers in place so older UI code can call them safely.
+ */
+export const NEPAL_VAT_RATE = 0;
 
 /**
  * Prices on menu are treated as taxable supply; VAT is added on top (exclusive basis).
@@ -7,8 +10,8 @@ export const NEPAL_VAT_RATE = 0.13;
  */
 export function computeNepalVat(subtotal) {
   const s = Math.round(Number(subtotal) * 100) / 100;
-  const vatAmount = Math.round(s * NEPAL_VAT_RATE * 100) / 100;
-  const total = Math.round((s + vatAmount) * 100) / 100;
+  const vatAmount = 0;
+  const total = s;
   return {
     subtotal: s,
     vatAmount,

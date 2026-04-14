@@ -3,7 +3,7 @@ import { Download, Loader2, RefreshCw, Wallet, Store } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useCartStore } from '../../stores/cartStore';
 import useGuestStore from '../../stores/guestStore';
-import { computeNepalVat, formatNpr, NEPAL_VAT_RATE } from '../../lib/vat';
+import { computeNepalVat, formatNpr } from '../../lib/vat';
 import { downloadSessionReceiptPdf } from '../../lib/receiptPdf';
 import { DEMO_MODE } from '../../lib/supabase';
 import { aggregateLinesFromOrders, pendingOrderLines } from '../../lib/billAggregation';
@@ -20,6 +20,7 @@ export default function BillView({ restaurant, sessionId }) {
   const [refreshing, setRefreshing] = useState(false);
   const [savingLedger, setSavingLedger] = useState(false);
   const [esewaEnabled, setEsewaEnabled] = useState(false);
+  const [esewaHost, setEsewaHost] = useState('');
   const [esewaLoading, setEsewaLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -45,7 +46,15 @@ export default function BillView({ restaurant, sessionId }) {
       setEsewaEnabled(false);
       return;
     }
-    api.getEsewaPublicConfig().then((c) => setEsewaEnabled(!!c.enabled)).catch(() => setEsewaEnabled(false));
+    api.getEsewaPublicConfig()
+      .then((c) => {
+        setEsewaEnabled(!!c.enabled);
+        setEsewaHost(String(c?.form_host || ''));
+      })
+      .catch(() => {
+        setEsewaEnabled(false);
+        setEsewaHost('');
+      });
   }, []);
 
   useEffect(() => {
@@ -98,9 +107,9 @@ export default function BillView({ restaurant, sessionId }) {
         line_total: l.line_total,
       })),
       subtotal: billVat.subtotal,
-      vatAmount: billVat.vatAmount,
-      vatRate: billVat.vatRate,
-      total: billVat.total,
+      vatAmount: 0,
+      vatRate: 0,
+      total: billVat.subtotal,
     });
     toast.success('PDF downloaded');
   }
@@ -235,13 +244,9 @@ export default function BillView({ restaurant, sessionId }) {
                       <span>Subtotal</span>
                       <span className="tabular-nums">{formatNpr(billVat.subtotal)}</span>
                     </div>
-                    <div className="flex justify-between text-body">
-                      <span>VAT ({Math.round(NEPAL_VAT_RATE * 100)}%)</span>
-                      <span className="tabular-nums">{formatNpr(billVat.vatAmount)}</span>
-                    </div>
                     <div className="flex justify-between text-base font-bold text-ink pt-1 border-t border-border">
                       <span>Total</span>
-                      <span className="tabular-nums">{formatNpr(billVat.total)}</span>
+                      <span className="tabular-nums">{formatNpr(billVat.subtotal)}</span>
                     </div>
                   </div>
 
@@ -284,6 +289,11 @@ export default function BillView({ restaurant, sessionId }) {
                         {esewaLoading ? <Loader2 size={14} className="animate-spin" /> : <Wallet size={14} />}
                         Pay with eSewa
                       </button>
+                      {esewaEnabled && esewaHost && (
+                        <p className="text-[10px] text-muted mt-2">
+                          Payment host: <span className="font-mono text-ink/80">{esewaHost}</span>
+                        </p>
+                      )}
                       {!tableRoomId && (
                         <p className="text-[10px] text-muted mt-2">
                           Use the QR link for your table or room so this bill is tied to the right check.
@@ -317,7 +327,7 @@ export default function BillView({ restaurant, sessionId }) {
                     </div>
                   ))}
                   <div className="flex justify-between text-xs text-muted mt-2 pt-2 border-t border-border/50">
-                    <span>Est. with VAT</span>
+                    <span>Estimated total</span>
                     <span className="tabular-nums">{formatNpr(cartVat.total)}</span>
                   </div>
                 </div>
@@ -353,9 +363,6 @@ export default function BillView({ restaurant, sessionId }) {
           )}
         </div>
       </div>
-      <p className="text-[10px] text-muted mt-2 text-center leading-relaxed">
-        Nepal VAT ({Math.round(NEPAL_VAT_RATE * 100)}%) on approved items. Staff may adjust totals before payment.
-      </p>
     </div>
   );
 }

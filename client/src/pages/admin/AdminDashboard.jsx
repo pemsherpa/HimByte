@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Building2, Receipt, TrendingUp, Users, CheckCircle, BarChart2 } from 'lucide-react';
+import { Building2, Receipt, TrendingUp, Users, CheckCircle, BarChart2, Settings2, Trash2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
+import { Link } from 'react-router-dom';
 
 function StatCard({ label, value, sub, icon: Icon, color, delay = 0 }) {
   return (
@@ -75,6 +76,31 @@ export default function AdminDashboard() {
           icon={TrendingUp}   color="bg-success-soft text-success"   delay={0.14} />
         <StatCard label="Completion Rate" value={analytics ? `${analytics.completion_rate}%` : '—'} sub={`${analytics?.total_orders ?? 0} total orders`}
           icon={CheckCircle}  color="bg-blue-50 text-blue-600"       delay={0.21} />
+      </div>
+
+      <div className="mb-5">
+        <Card className="p-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-muted uppercase tracking-wide">Quick actions</p>
+            <p className="text-sm text-body mt-1">Manage tenant subscriptions and lifecycle.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              to="/admin/restaurants"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-dark transition-colors"
+            >
+              <Settings2 size={16} />
+              Manage restaurants
+            </Link>
+            <Link
+              to="/admin/restaurants"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-danger/25 bg-danger-soft/40 text-danger text-sm font-bold hover:bg-danger-soft transition-colors"
+            >
+              <Trash2 size={16} />
+              Delete tenant
+            </Link>
+          </div>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">

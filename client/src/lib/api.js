@@ -45,6 +45,8 @@ export const api = {
   getRestaurantById: (id) => request(`/restaurants/by-id/${id}`),
   getTablesRooms: (restaurantId, type) =>
     request(`/restaurants/${restaurantId}/tables_rooms${type ? `?type=${type}` : ''}`),
+  deleteTableRoom: (restaurantId, tableRoomId) =>
+    request(`/restaurants/${restaurantId}/tables_rooms/${tableRoomId}`, { method: 'DELETE' }),
 
   // ── Menu ────────────────────────────────────
   getCategories: (restaurantId, { serviceOnly } = {}) =>
@@ -98,6 +100,7 @@ export const api = {
   // ── Admin ───────────────────────────────────
   getAllRestaurants: () => request('/admin/restaurants'),
   getGlobalAnalytics: () => request('/admin/analytics'),
+  deleteRestaurant: (restaurantId) => request(`/admin/restaurants/${restaurantId}`, { method: 'DELETE' }),
   getRestaurantAnalytics: (restaurantId, { period } = {}) =>
     request(
       `/admin/restaurant-analytics/${restaurantId}${period ? `?period=${encodeURIComponent(period)}` : ''}`,

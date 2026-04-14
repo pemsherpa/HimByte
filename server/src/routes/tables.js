@@ -11,6 +11,53 @@ const router = Router();
  */
 const ON_BILL_STATUSES = ['approved', 'preparing', 'ready', 'served'];
 
+function buildReceiptLinesFromOrders(orders) {
+  const lines = [];
+  for (const o of orders || []) {
+    for (const oi of o.order_items || []) {
+      const name = oi.menu_items?.name || 'Item';
+      const qty = Number(oi.quantity || 0);
+      const unit = Number(oi.price_at_time || 0);
+      const lineTotal = Math.round(unit * qty * 100) / 100;
+      lines.push({ name, quantity: qty, unit_price: unit, line_total: lineTotal, order_id: o.id });
+    }
+  }
+  return lines;
+}
+
+async function insertReceiptSafe(db, row) {
+  const attempt = async (payload) => db.from('receipts').insert(payload).select().single();
+  let { data, error } = await attempt(row);
+  if (!error) return { data, error: null };
+
+  const slim = { ...row };
+  delete slim.table_room_id;
+  delete slim.payment_method;
+  delete slim.payment_ref;
+  ({ data, error } = await attempt(slim));
+  return { data, error };
+}
+
+async function markTablePaidSafe(db, tableId, restaurantId, fields) {
+  let { error } = await db
+    .from('tables_rooms')
+    .update(fields)
+    .eq('id', tableId)
+    .eq('restaurant_id', restaurantId);
+  if (!error) return null;
+
+  const slim = { ...fields };
+  delete slim.last_paid_at;
+  delete slim.last_payment_method;
+  delete slim.last_payment_ref;
+  ({ error } = await db
+    .from('tables_rooms')
+    .update(slim)
+    .eq('id', tableId)
+    .eq('restaurant_id', restaurantId));
+  return error || null;
+}
+
 function buildLineItemsFromOrders(orders) {
   const lines = [];
   for (const order of orders || []) {
@@ -143,6 +190,44 @@ router.post('/:tableRoomId/settle', requireAuth, requireActiveStaffSubscription,
   const settled_total = Number(table.running_total || 0);
   const ts = new Date().toISOString();
 
+  // Snapshot receipt lines before detaching orders from this table.
+  let receiptId = null;
+  try {
+    const { data: rest } = await db
+      .from('restaurants')
+      .select('vat_pan_number')
+      .eq('id', table.restaurant_id)
+      .maybeSingle();
+    const { data: orders } = await db
+      .from('orders')
+      .select('id, status, session_id, order_items(quantity, price_at_time, menu_items(name))')
+      .eq('restaurant_id', table.restaurant_id)
+      .eq('table_room_id', table.id)
+      .in('status', ON_BILL_STATUSES);
+    const lines = buildReceiptLinesFromOrders(orders || []);
+    const subtotal = Math.round(lines.reduce((s, l) => s + l.line_total, 0) * 100) / 100;
+    const session_id = (orders || []).find((o) => o.session_id)?.session_id || null;
+    if (lines.length) {
+      const { data: receipt, error: rErr } = await insertReceiptSafe(db, {
+        restaurant_id: table.restaurant_id,
+        session_id,
+        guest_email: null,
+        line_items: lines,
+        subtotal,
+        vat_rate: 0,
+        vat_amount: 0,
+        total_amount: subtotal,
+        pan_display: rest?.vat_pan_number || null,
+        table_room_id: table.id,
+        payment_method: 'manual',
+        payment_ref: null,
+      });
+      if (!rErr && receipt?.id) receiptId = receipt.id;
+    }
+  } catch {
+    // ignore receipt creation errors on manual settle
+  }
+
   // Close the check: mark unpaid orders served and detach all rows from this table so the next session is clean.
   const { error: ordErr } = await db
     .from('orders')
@@ -170,7 +255,13 @@ router.post('/:tableRoomId/settle', requireAuth, requireActiveStaffSubscription,
 
   if (rtErr) return res.status(500).json({ error: rtErr.message });
 
-  res.json({ settled_total, table_id: table.id, message: 'Table settled' });
+  await markTablePaidSafe(db, table.id, table.restaurant_id, {
+    last_paid_at: ts,
+    last_payment_method: 'manual',
+    last_payment_ref: null,
+  });
+
+  res.json({ settled_total, table_id: table.id, receipt_id: receiptId, message: 'Table settled' });
 });
 
 // Staff: Transfer order items to another table

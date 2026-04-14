@@ -6,7 +6,7 @@ import { assertGuestRestaurantActive } from '../lib/subscription.js';
 
 const router = Router();
 
-const VAT_RATE = 0.13;
+const VAT_RATE = 0;
 
 function buildLinesFromOrders(orders) {
   const lines = [];
@@ -52,8 +52,8 @@ router.post('/from-session', async (req, res) => {
 
   const lines = buildLinesFromOrders(orders || []);
   const subtotal = Math.round(lines.reduce((s, l) => s + l.line_total, 0) * 100) / 100;
-  const vatAmount = Math.round(subtotal * VAT_RATE * 100) / 100;
-  const total = Math.round((subtotal + vatAmount) * 100) / 100;
+  const vatAmount = 0;
+  const total = subtotal;
 
   if (lines.length === 0) {
     return res.status(400).json({ error: 'No billable items for this session yet.' });

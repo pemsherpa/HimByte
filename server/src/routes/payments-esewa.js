@@ -4,11 +4,68 @@ import { getClient, supabase, DEMO_MODE } from '../supabaseClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireActiveStaffSubscription } from '../middleware/subscription.js';
 import { signEsewaRequest, verifyEsewaResponseSignature } from '../lib/esewa.js';
+import { sendGuestEmail } from '../lib/mailer.js';
 
 const router = Router();
 
 /** In-memory pending eSewa intents (restart clears; use DB in production if needed). */
 const pendingByTransactionUuid = new Map();
+
+function pickEsewaReturnData(req) {
+  const q = req?.query?.data;
+  if (q && typeof q === 'string') return q;
+  const b = req?.body?.data;
+  if (b && typeof b === 'string') return b;
+  // Some eSewa configurations return fields directly (not wrapped in base64 `data`).
+  // If we have a transaction_uuid, synthesize the expected base64 JSON payload.
+  const merged = { ...(req?.query || {}), ...(req?.body || {}) };
+  const tx = merged?.transaction_uuid;
+  if (typeof tx !== 'string' || !tx) return null;
+  const payload = {};
+  const allowed = [
+    'status',
+    'total_amount',
+    'transaction_uuid',
+    'product_code',
+    'signed_field_names',
+    'signature',
+    'transaction_code',
+  ];
+  for (const k of allowed) {
+    const v = merged?.[k];
+    if (v !== undefined && v !== null) payload[k] = String(v);
+  }
+  try {
+    return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64');
+  } catch {
+    return null;
+  }
+}
+
+function decodeEsewaReturnPayload(data) {
+  try {
+    const json = Buffer.from(String(data), 'base64').toString('utf8');
+    const body = JSON.parse(json);
+    return body && typeof body === 'object' ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+function appConfiguredFrontendBaseUrl() {
+  const raw = process.env.APP_URL || process.env.CLIENT_URL || 'http://localhost:5173';
+  return normalizeBaseUrl(raw);
+}
+
+function frontendBaseUrlFromEsewaReturn(data) {
+  const body = data ? decodeEsewaReturnPayload(data) : null;
+  const uuid = body?.transaction_uuid ? String(body.transaction_uuid) : '';
+  if (uuid) {
+    const pending = pendingByTransactionUuid.get(uuid);
+    if (pending?.returnBase) return normalizeBaseUrl(pending.returnBase);
+  }
+  return appConfiguredFrontendBaseUrl();
+}
 
 function cleanupPending() {
   const maxAge = 25 * 60 * 1000;
@@ -18,9 +75,30 @@ function cleanupPending() {
   }
 }
 
-function appPublicBaseUrl() {
+function normalizeBaseUrl(raw) {
+  return String(raw || '').trim().replace(/\/$/, '');
+}
+
+function appPublicBaseUrlFromRequest(req) {
+  const origin = req?.headers?.origin;
+  if (origin) return normalizeBaseUrl(origin);
+
+  const xfProto = req?.headers?.['x-forwarded-proto'];
+  const xfHost = req?.headers?.['x-forwarded-host'];
+  if (xfProto && xfHost) {
+    const proto = String(xfProto).split(',')[0].trim();
+    const host = String(xfHost).split(',')[0].trim();
+    if (proto && host) return normalizeBaseUrl(`${proto}://${host}`);
+  }
+
+  const host = req?.headers?.host;
+  if (host) {
+    const proto = (req?.protocol || 'http').trim();
+    return normalizeBaseUrl(`${proto}://${host}`);
+  }
+
   const raw = process.env.APP_URL || process.env.CLIENT_URL || 'http://localhost:5173';
-  return String(raw).replace(/\/$/, '');
+  return normalizeBaseUrl(raw);
 }
 
 function esewaFormUrl() {
@@ -35,6 +113,80 @@ function esewaSecret() {
 
 function esewaProductCode() {
   return process.env.ESEWA_PRODUCT_CODE?.trim() || 'EPAYTEST';
+}
+
+function buildReceiptLinesFromOrders(orders) {
+  const lines = [];
+  for (const o of orders || []) {
+    for (const oi of o.order_items || []) {
+      const name = oi.menu_items?.name || 'Item';
+      const qty = Number(oi.quantity || 0);
+      const unit = Number(oi.price_at_time || 0);
+      const lineTotal = Math.round(unit * qty * 100) / 100;
+      lines.push({ name, quantity: qty, unit_price: unit, line_total: lineTotal, order_id: o.id });
+    }
+  }
+  return lines;
+}
+
+async function insertReceiptSafe(db, row) {
+  // Attempt insert with optional newer columns; fallback if DB is missing them.
+  const attempt = async (payload) =>
+    db.from('receipts').insert(payload).select().single();
+
+  const payload = { ...row };
+  let { data, error } = await attempt(payload);
+  if (!error) return { data, error: null };
+
+  // Remove optional columns if migration not applied yet.
+  const slim = { ...row };
+  delete slim.table_room_id;
+  delete slim.payment_method;
+  delete slim.payment_ref;
+  ({ data, error } = await attempt(slim));
+  return { data, error };
+}
+
+async function markTablePaidSafe(db, tableId, restaurantId, fields) {
+  const payload = { ...fields };
+  let { error } = await db
+    .from('tables_rooms')
+    .update(payload)
+    .eq('id', tableId)
+    .eq('restaurant_id', restaurantId);
+  if (!error) return null;
+
+  // Fallback if migration not applied.
+  const slim = { ...fields };
+  delete slim.last_paid_at;
+  delete slim.last_payment_method;
+  delete slim.last_payment_ref;
+  ({ error } = await db
+    .from('tables_rooms')
+    .update(slim)
+    .eq('id', tableId)
+    .eq('restaurant_id', restaurantId));
+  return error || null;
+}
+
+async function snapshotTableForReceipt(db, restaurantId, tableRoomId) {
+  const { data: rest } = await db
+    .from('restaurants')
+    .select('vat_pan_number')
+    .eq('id', restaurantId)
+    .maybeSingle();
+
+  const { data: orders } = await db
+    .from('orders')
+    .select('id, status, session_id, order_items(quantity, price_at_time, menu_items(name))')
+    .eq('restaurant_id', restaurantId)
+    .eq('table_room_id', tableRoomId)
+    .in('status', ['approved', 'preparing', 'ready', 'served']);
+
+  const lines = buildReceiptLinesFromOrders(orders || []);
+  const subtotal = Math.round(lines.reduce((s, l) => s + l.line_total, 0) * 100) / 100;
+  const session_id = (orders || []).find((o) => o.session_id)?.session_id || null;
+  return { lines, subtotal, pan_display: rest?.vat_pan_number || null, session_id };
 }
 
 async function settleTableCheck(db, table) {
@@ -107,9 +259,10 @@ router.post('/esewa/table-bill/init', requireAuth, requireActiveStaffSubscriptio
   const transaction_uuid = crypto.randomUUID();
   const signature = signEsewaRequest(total_amount, transaction_uuid, productCode, secret);
 
-  const base = appPublicBaseUrl();
-  const success_url = `${base}/merchant/payments/esewa/success`;
-  const failure_url = `${base}/merchant/payments/esewa/failure`;
+  const base = appPublicBaseUrlFromRequest(req);
+  // Use backend endpoints to capture POST return payloads, then redirect to SPA with ?data=...
+  const success_url = `${base}/api/payments/esewa/staff/success`;
+  const failure_url = `${base}/api/payments/esewa/staff/failure`;
   const signed_field_names = 'total_amount,transaction_uuid,product_code';
 
   pendingByTransactionUuid.set(transaction_uuid, {
@@ -117,6 +270,7 @@ router.post('/esewa/table-bill/init', requireAuth, requireActiveStaffSubscriptio
     tableRoomId: table.id,
     restaurantId: table.restaurant_id,
     amountExpected: Number(total_amount),
+    returnBase: base,
     createdAt: Date.now(),
   });
 
@@ -137,6 +291,7 @@ router.post('/esewa/table-bill/init', requireAuth, requireActiveStaffSubscriptio
   res.json({
     formUrl: esewaFormUrl(),
     fields,
+    return_urls: { success_url, failure_url },
     transaction_uuid,
     total_amount,
     table_label: table.identifier,
@@ -211,21 +366,73 @@ router.post('/esewa/verify', requireAuth, requireActiveStaffSubscription, async 
     return res.status(400).json({ error: 'Table is no longer valid for this payment' });
   }
 
+  const paidAt = new Date().toISOString();
+  let receiptId = null;
+  try {
+    const snap = await snapshotTableForReceipt(db, pending.restaurantId, table.id);
+    if (snap?.lines?.length) {
+      const { data: receipt, error: rErr } = await insertReceiptSafe(db, {
+        restaurant_id: pending.restaurantId,
+        session_id: snap.session_id,
+        guest_email: null,
+        line_items: snap.lines,
+        subtotal: snap.subtotal,
+        vat_rate: 0,
+        vat_amount: 0,
+        total_amount: snap.subtotal,
+        pan_display: snap.pan_display,
+        table_room_id: table.id,
+        payment_method: 'esewa',
+        payment_ref: body.transaction_code || uuid,
+      });
+      if (!rErr && receipt?.id) receiptId = receipt.id;
+    }
+  } catch {
+    // Receipt failure should not block settling the table.
+  }
+
   try {
     await settleTableCheck(db, table);
   } catch (e) {
     return res.status(500).json({ error: e.message || 'Failed to close table after payment' });
   }
 
+  await markTablePaidSafe(db, table.id, pending.restaurantId, {
+    last_paid_at: paidAt,
+    last_payment_method: 'esewa',
+    last_payment_ref: body.transaction_code || uuid,
+  });
+
   pendingByTransactionUuid.delete(uuid);
 
   res.json({
     ok: true,
+    receipt_id: receiptId,
     transaction_code: body.transaction_code,
     transaction_uuid: uuid,
     table_id: table.id,
     settled: true,
   });
+});
+
+/**
+ * Staff: eSewa redirects here on success/failure. It may POST the payload; we forward to SPA.
+ * Note: verification still happens in the SPA page via /api/payments/esewa/verify.
+ */
+router.all('/esewa/staff/success', (req, res) => {
+  const data = pickEsewaReturnData(req);
+  const base = frontendBaseUrlFromEsewaReturn(data);
+  const q = new URLSearchParams();
+  if (data) q.set('data', data);
+  res.redirect(302, `${base}/merchant/payments/esewa/success${q.toString() ? `?${q.toString()}` : ''}`);
+});
+
+router.all('/esewa/staff/failure', (req, res) => {
+  const data = pickEsewaReturnData(req);
+  const base = frontendBaseUrlFromEsewaReturn(data);
+  const q = new URLSearchParams();
+  if (data) q.set('data', data);
+  res.redirect(302, `${base}/merchant/payments/esewa/failure${q.toString() ? `?${q.toString()}` : ''}`);
 });
 
 router.get('/esewa/config', requireAuth, (_req, res) => {
@@ -318,11 +525,12 @@ router.post('/esewa/guest/init', async (req, res) => {
   const transaction_uuid = crypto.randomUUID();
   const signature = signEsewaRequest(total_amount, transaction_uuid, productCode, secret);
 
-  const base = appPublicBaseUrl();
+  const base = appPublicBaseUrlFromRequest(req);
   const rQ = encodeURIComponent(restaurantRow.slug);
   const locQ = encodeURIComponent(table_room_id);
-  const success_url = `${base}/bill/payments/esewa/success?r=${rQ}&loc=${locQ}`;
-  const failure_url = `${base}/bill/payments/esewa/failure?r=${rQ}&loc=${locQ}`;
+  // Use backend endpoints to capture POST return payloads, then redirect to SPA with ?data=...
+  const success_url = `${base}/api/payments/esewa/guest/success?r=${rQ}&loc=${locQ}`;
+  const failure_url = `${base}/api/payments/esewa/guest/failure?r=${rQ}&loc=${locQ}`;
   const signed_field_names = 'total_amount,transaction_uuid,product_code';
 
   pendingByTransactionUuid.set(transaction_uuid, {
@@ -331,6 +539,7 @@ router.post('/esewa/guest/init', async (req, res) => {
     tableRoomId: table.id,
     restaurantId: table.restaurant_id,
     amountExpected: Number(total_amount),
+    returnBase: base,
     createdAt: Date.now(),
   });
 
@@ -349,6 +558,7 @@ router.post('/esewa/guest/init', async (req, res) => {
       signed_field_names,
       signature,
     },
+    return_urls: { success_url, failure_url },
     transaction_uuid,
     total_amount,
     table_label: table.identifier,
@@ -412,21 +622,98 @@ router.post('/esewa/guest/verify', async (req, res) => {
     return res.status(400).json({ error: 'Table is no longer valid for this payment' });
   }
 
+  const paidAt = new Date().toISOString();
+  let receiptId = null;
+  try {
+    const snap = await snapshotTableForReceipt(supabase, pending.restaurantId, table.id);
+    if (snap?.lines?.length) {
+      const { data: receipt, error: rErr } = await insertReceiptSafe(supabase, {
+        restaurant_id: pending.restaurantId,
+        session_id: pending.sessionId || snap.session_id,
+        guest_email: null,
+        line_items: snap.lines,
+        subtotal: snap.subtotal,
+        vat_rate: 0,
+        vat_amount: 0,
+        total_amount: snap.subtotal,
+        pan_display: snap.pan_display,
+        table_room_id: table.id,
+        payment_method: 'esewa',
+        payment_ref: body.transaction_code || uuid,
+      });
+      if (!rErr && receipt?.id) receiptId = receipt.id;
+    }
+  } catch {
+    // ignore
+  }
+
   try {
     await settleTableCheck(supabase, table);
   } catch (e) {
     return res.status(500).json({ error: e.message || 'Failed to update table after payment' });
   }
 
+  await markTablePaidSafe(supabase, table.id, pending.restaurantId, {
+    last_paid_at: paidAt,
+    last_payment_method: 'esewa',
+    last_payment_ref: body.transaction_code || uuid,
+  });
+
+  // Email receipt if we have guest email for this session/table.
+  try {
+    const { data: guestOrder } = await supabase
+      .from('orders')
+      .select('guest_email')
+      .eq('restaurant_id', pending.restaurantId)
+      .eq('session_id', pending.sessionId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const to = guestOrder?.guest_email ? String(guestOrder.guest_email).trim() : '';
+    if (to) {
+      sendGuestEmail({
+        to,
+        subject: 'Himbyte — Payment received (bill)',
+        text: `Payment received. Reference: ${body.transaction_code || uuid}\n\nThank you.`,
+        html: `<p>Payment received.</p><p><b>Reference:</b> ${body.transaction_code || uuid}</p><p>Thank you.</p>`,
+      }).catch(() => {});
+    }
+  } catch {
+    // ignore
+  }
+
   pendingByTransactionUuid.delete(uuid);
 
   res.json({
     ok: true,
+    receipt_id: receiptId,
     transaction_code: body.transaction_code,
     transaction_uuid: uuid,
     table_id: table.id,
     settled: true,
   });
+});
+
+router.all('/esewa/guest/success', (req, res) => {
+  const data = pickEsewaReturnData(req);
+  const base = frontendBaseUrlFromEsewaReturn(data);
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(req.query || {})) {
+    if (typeof v === 'string' && v) q.set(k, v);
+  }
+  if (data) q.set('data', data);
+  res.redirect(302, `${base}/bill/payments/esewa/success${q.toString() ? `?${q.toString()}` : ''}`);
+});
+
+router.all('/esewa/guest/failure', (req, res) => {
+  const data = pickEsewaReturnData(req);
+  const base = frontendBaseUrlFromEsewaReturn(data);
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(req.query || {})) {
+    if (typeof v === 'string' && v) q.set(k, v);
+  }
+  if (data) q.set('data', data);
+  res.redirect(302, `${base}/bill/payments/esewa/failure${q.toString() ? `?${q.toString()}` : ''}`);
 });
 
 export default router;

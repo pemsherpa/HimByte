@@ -122,4 +122,39 @@ router.post(
   },
 );
 
+// Owner: Delete a table or room (only if nothing is currently linked)
+router.delete(
+  '/:restaurantId/tables_rooms/:tableRoomId',
+  requireAuth,
+  requireRestaurant,
+  requireRole('restaurant_admin', 'super_admin'),
+  requireActiveStaffSubscription,
+  async (req, res) => {
+    const id = req.params.tableRoomId;
+    if (!id) return res.status(400).json({ error: 'tableRoomId is required' });
+
+    const { count, error: cErr } = await supabase
+      .from('orders')
+      .select('id', { count: 'exact', head: true })
+      .eq('restaurant_id', req.restaurantId)
+      .eq('table_room_id', id);
+
+    if (cErr) return res.status(500).json({ error: cErr.message });
+    if ((count || 0) > 0) {
+      return res.status(409).json({
+        error: 'This table/room has orders linked. Settle and clear the table bill before deleting.',
+      });
+    }
+
+    const { error: dErr } = await supabase
+      .from('tables_rooms')
+      .delete()
+      .eq('id', id)
+      .eq('restaurant_id', req.restaurantId);
+
+    if (dErr) return res.status(500).json({ error: dErr.message });
+    return res.status(204).send();
+  },
+);
+
 export default router;

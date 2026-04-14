@@ -10,6 +10,7 @@ import {
   sanitizeContactField,
   sanitizeNotes,
 } from '../lib/orderValidation.js';
+import { sendGuestEmail } from '../lib/mailer.js';
 
 const router = Router();
 
@@ -122,6 +123,19 @@ router.post('/', guestOrderLimiter, async (req, res) => {
   const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
   if (itemsError) return res.status(500).json({ error: itemsError.message });
 
+  if (safeEmail) {
+    // Fire-and-forget; don't block order placement on SMTP issues.
+    sendGuestEmail({
+      to: safeEmail,
+      subject: 'Himbyte — Order placed',
+      text: `Your order has been placed successfully.\n\nOrder: ${order.id}\nStatus: pending\n\nThank you.`,
+      html: `<p>Your order has been placed successfully.</p><p><b>Order:</b> ${order.id}<br/><b>Status:</b> pending</p><p>Thank you.</p>`,
+    }).then((r) => {
+      if (r?.skipped) console.warn('[email] skipped order placed', r.reason);
+      else if (r && !r.ok) console.warn('[email] failed order placed', r.error || 'unknown');
+    }).catch(() => {});
+  }
+
   res.status(201).json(order);
 });
 
@@ -167,7 +181,7 @@ router.patch('/:orderId/status', requireAuth, requireRole('restaurant_admin', 's
 
   const { data: existing, error: fetchErr } = await db
     .from('orders')
-    .select('id, status, restaurant_id, table_room_id, total_price')
+    .select('id, status, restaurant_id, table_room_id, total_price, guest_email')
     .eq('id', req.params.orderId)
     .single();
 
@@ -205,6 +219,30 @@ router.patch('/:orderId/status', requireAuth, requireRole('restaurant_admin', 's
         .update({ running_total: next })
         .eq('id', existing.table_room_id)
         .eq('restaurant_id', existing.restaurant_id);
+    }
+  }
+
+  // Email guest on key transitions (best effort)
+  const email = existing.guest_email ? String(existing.guest_email).trim() : '';
+  if (email) {
+    const subjectByStatus = {
+      approved: 'Himbyte — Order approved',
+      preparing: 'Himbyte — Your order is cooking',
+      ready: 'Himbyte — Your order is ready',
+      served: 'Himbyte — Order served',
+      cancelled: 'Himbyte — Order cancelled',
+    };
+    const subj = subjectByStatus[status];
+    if (subj) {
+      sendGuestEmail({
+        to: email,
+        subject: subj,
+        text: `Update for your order ${existing.id}.\n\nNew status: ${status}\n\nThank you.`,
+        html: `<p>Update for your order <b>${existing.id}</b>.</p><p><b>New status:</b> ${status}</p><p>Thank you.</p>`,
+      }).then((r) => {
+        if (r?.skipped) console.warn('[email] skipped status update', r.reason);
+        else if (r && !r.ok) console.warn('[email] failed status update', r.error || 'unknown');
+      }).catch(() => {});
     }
   }
 

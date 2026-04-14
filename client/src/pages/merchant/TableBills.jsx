@@ -35,6 +35,7 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
   const [transferTarget, setTransferTarget] = useState('');
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [esewaEnabled, setEsewaEnabled] = useState(false);
+  const [esewaHost, setEsewaHost] = useState('');
   const [esewaLoading, setEsewaLoading] = useState(false);
 
   const load = useCallback(() => {
@@ -49,7 +50,15 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    api.getEsewaConfig().then((c) => setEsewaEnabled(!!c.enabled)).catch(() => setEsewaEnabled(false));
+    api.getEsewaConfig()
+      .then((c) => {
+        setEsewaEnabled(!!c.enabled);
+        setEsewaHost(String(c?.form_host || ''));
+      })
+      .catch(() => {
+        setEsewaEnabled(false);
+        setEsewaHost('');
+      });
   }, []);
 
   useEffect(() => {
@@ -308,6 +317,11 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
                   {esewaLoading ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />}
                   Pay Rs. {Number(bill.running_total || 0).toLocaleString()} with eSewa
                 </button>
+                {esewaEnabled && esewaHost && (
+                  <p className="text-[10px] text-muted mt-2">
+                    Payment host: <span className="font-mono text-ink/80">{esewaHost}</span>
+                  </p>
+                )}
                 {!esewaEnabled && (
                   <p className="text-[10px] text-muted mt-2">
                     Add <span className="font-mono text-ink/80">ESEWA_SECRET_KEY</span> to server env to enable (see .env.example).
@@ -582,8 +596,17 @@ export default function TableBills() {
                     <span className="text-xs font-semibold text-body">{t.identifier}</span>
                   </div>
                   <div className="flex items-center justify-center gap-1">
-                    <CheckCircle size={11} className="text-success" />
-                    <span className="text-[10px] text-success font-medium">Free</span>
+                    {t.last_paid_at ? (
+                      <>
+                        <CheckCircle size={11} className="text-success" />
+                        <span className="text-[10px] text-success font-medium">Paid</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle size={11} className="text-success" />
+                        <span className="text-[10px] text-success font-medium">Free</span>
+                      </>
+                    )}
                   </div>
                 </Card>
               ))}

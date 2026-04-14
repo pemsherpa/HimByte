@@ -4,6 +4,7 @@ import { Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { api } from '../../lib/api';
 import toast from 'react-hot-toast';
 import CustomerLayout from '../../components/layout/CustomerLayout';
+import { extractEsewaDataFromUrl } from '../../lib/esewaReturnData';
 
 function billBackPath(searchParams) {
   const r = searchParams.get('r');
@@ -29,7 +30,7 @@ export function GuestEsewaSuccessPage() {
   const [detail, setDetail] = useState(null);
 
   useEffect(() => {
-    const data = searchParams.get('data');
+    const data = searchParams.get('data') || extractEsewaDataFromUrl(window.location.href);
     if (!data) {
       setPhase('error');
       setDetail('Missing payment data. Return to your bill and try again.');
