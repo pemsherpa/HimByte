@@ -1,17 +1,40 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { supabase, getClient } from '../supabaseClient.js';
 import { requireAuth, requireRole, requireRestaurant } from '../middleware/auth.js';
 import { requireActiveStaffSubscription } from '../middleware/subscription.js';
 import { assertGuestRestaurantActive } from '../lib/subscription.js';
+import {
+  MAX_ORDER_LINE_ITEMS,
+  mergeOrderLineItems,
+  sanitizeContactField,
+  sanitizeNotes,
+} from '../lib/orderValidation.js';
 
 const router = Router();
 
-// Guest: Place an order (no auth needed)
-router.post('/', async (req, res) => {
+const guestOrderLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Too many orders from this address. Please wait a minute and try again.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Guest: Place an order (no auth needed) — prices computed server-side from menu_items
+router.post('/', guestOrderLimiter, async (req, res) => {
   const { restaurant_id, table_room_id, items, notes, session_id, guest_phone, guest_email } = req.body;
 
-  if (!restaurant_id || !items?.length) {
-    return res.status(400).json({ error: 'restaurant_id and items are required' });
+  if (!restaurant_id) {
+    return res.status(400).json({ error: 'restaurant_id is required' });
+  }
+
+  const merged = mergeOrderLineItems(items);
+  if (!merged.length) {
+    return res.status(400).json({ error: 'At least one valid line item (menu_item_id + quantity) is required' });
+  }
+  if (merged.length > MAX_ORDER_LINE_ITEMS) {
+    return res.status(400).json({ error: `Maximum ${MAX_ORDER_LINE_ITEMS} distinct items per order` });
   }
 
   try {
@@ -20,7 +43,57 @@ router.post('/', async (req, res) => {
     return res.status(e.status || 403).json({ error: e.message, code: e.code });
   }
 
-  const total_price = items.reduce((sum, item) => sum + Number(item.price_at_time) * item.quantity, 0);
+  const menuIds = merged.map((m) => m.menu_item_id);
+  const { data: menuRows, error: menuErr } = await supabase
+    .from('menu_items')
+    .select('id, price, is_available')
+    .eq('restaurant_id', restaurant_id)
+    .in('id', menuIds);
+
+  if (menuErr) return res.status(500).json({ error: menuErr.message });
+
+  const byId = new Map((menuRows || []).map((r) => [r.id, r]));
+  if (byId.size !== menuIds.length) {
+    return res.status(400).json({ error: 'One or more menu items are invalid for this restaurant' });
+  }
+
+  const unavailable = merged.filter((m) => !byId.get(m.menu_item_id)?.is_available);
+  if (unavailable.length) {
+    return res.status(400).json({ error: 'One or more items are not available right now' });
+  }
+
+  if (table_room_id) {
+    const { data: tr, error: trErr } = await supabase
+      .from('tables_rooms')
+      .select('id')
+      .eq('id', table_room_id)
+      .eq('restaurant_id', restaurant_id)
+      .maybeSingle();
+    if (trErr) return res.status(500).json({ error: trErr.message });
+    if (!tr?.id) {
+      return res.status(400).json({ error: 'Table or room is invalid for this restaurant' });
+    }
+  }
+
+  let total_price = 0;
+  const pricedLines = [];
+  for (const m of merged) {
+    const row = byId.get(m.menu_item_id);
+    const unit = Number(row?.price);
+    if (!Number.isFinite(unit) || unit < 0) {
+      return res.status(500).json({ error: 'Invalid menu price in catalog' });
+    }
+    total_price += unit * m.quantity;
+    pricedLines.push({
+      menu_item_id: m.menu_item_id,
+      quantity: m.quantity,
+      price_at_time: unit,
+    });
+  }
+
+  const safeNotes = sanitizeNotes(notes);
+  const safePhone = sanitizeContactField(guest_phone);
+  const safeEmail = sanitizeContactField(guest_email);
 
   const { data: order, error: orderError } = await supabase
     .from('orders')
@@ -29,17 +102,17 @@ router.post('/', async (req, res) => {
       table_room_id: table_room_id || null,
       status: 'pending',
       total_price,
-      notes: notes || null,
-      session_id: session_id || null,
-      guest_phone: guest_phone || null,
-      guest_email: guest_email || null,
+      notes: safeNotes,
+      session_id: session_id ? String(session_id).slice(0, 128) : null,
+      guest_phone: safePhone,
+      guest_email: safeEmail,
     })
     .select()
     .single();
 
   if (orderError) return res.status(500).json({ error: orderError.message });
 
-  const orderItems = items.map((item) => ({
+  const orderItems = pricedLines.map((item) => ({
     order_id: order.id,
     menu_item_id: item.menu_item_id,
     quantity: item.quantity,

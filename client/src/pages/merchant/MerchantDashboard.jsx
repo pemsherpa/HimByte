@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ClipboardList, TrendingUp, Clock, CheckCircle, ArrowRight, Bell } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import Card from '../../components/ui/Card';
@@ -12,6 +12,7 @@ export default function MerchantDashboard() {
   const [recentOrders, setRecentOrders] = useState([]);
   const [openGuestRequests, setOpenGuestRequests] = useState(null);
   const { restaurantId, profile } = useAuthStore();
+  const location = useLocation();
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -22,10 +23,12 @@ export default function MerchantDashboard() {
     ]).then(([a, orders]) => {
       if (cancelled) return;
       setAnalytics(a);
-      setRecentOrders((orders || []).slice(0, 5));
+      const list = orders || [];
+      list.sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
+      setRecentOrders(list.slice(0, 5));
     });
     return () => { cancelled = true; };
-  }, [restaurantId]);
+  }, [restaurantId, location.pathname, location.key]);
 
   useEffect(() => {
     if (!restaurantId) return;

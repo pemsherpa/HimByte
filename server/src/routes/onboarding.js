@@ -1,7 +1,16 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { createClient } from '@supabase/supabase-js';
 
 const router = Router();
+
+const registerOwnerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: { error: 'Too many registration attempts from this address. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 function slugify(s) {
   return (
@@ -17,7 +26,7 @@ function slugify(s) {
  * Self-serve restaurant owner signup (requires service role on the server).
  * Creates auth user + restaurant + profile (restaurant_admin).
  */
-router.post('/register-owner', async (req, res) => {
+router.post('/register-owner', registerOwnerLimiter, async (req, res) => {
   const url = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {

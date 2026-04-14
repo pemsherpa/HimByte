@@ -5,13 +5,57 @@ import { requireActiveStaffSubscription } from '../middleware/subscription.js';
 
 const router = Router();
 
-/** Sum of line items for all non-cancelled orders on a table (matches bill drawer subtotal). */
+/**
+ * Orders that count toward tables_rooms.running_total (pending → approved adds to the bill).
+ * Pending-only orders have line items in DB but are not on the check until approved.
+ */
+const ON_BILL_STATUSES = ['approved', 'preparing', 'ready', 'served'];
+
+function buildLineItemsFromOrders(orders) {
+  const lines = [];
+  for (const order of orders || []) {
+    const rows = order.order_items || [];
+    if (rows.length) {
+      for (const oi of rows) {
+        lines.push({
+          order_item_id: oi.id,
+          order_id: order.id,
+          order_status: order.status,
+          menu_item_id: oi.menu_item_id,
+          name: oi.menu_items?.name || 'Item',
+          image_url: oi.menu_items?.image_url,
+          quantity: oi.quantity,
+          price_at_time: oi.price_at_time,
+          line_total: Number(oi.price_at_time) * oi.quantity,
+        });
+      }
+    } else {
+      const tp = Number(order.total_price || 0);
+      if (tp > 0) {
+        lines.push({
+          order_item_id: `order-${order.id}`,
+          order_id: order.id,
+          order_status: order.status,
+          menu_item_id: null,
+          name: 'Order total',
+          image_url: null,
+          quantity: 1,
+          price_at_time: tp,
+          line_total: tp,
+        });
+      }
+    }
+  }
+  return lines;
+}
+
+/** Line sum for orders that are actually on the running bill (matches subtotal in drawer). */
 async function computeLineTotal(db, tableRoomId) {
   const { data: orders } = await db
     .from('orders')
-    .select('total_price, order_items(quantity, price_at_time)')
+    .select('total_price, status, order_items(quantity, price_at_time)')
     .eq('table_room_id', tableRoomId)
-    .neq('status', 'cancelled');
+    .in('status', ON_BILL_STATUSES);
 
   let sum = 0;
   for (const o of orders || []) {
@@ -38,7 +82,7 @@ router.get('/:restaurantId/bills', requireAuth, requireRestaurant, requireActive
   res.json(data);
 });
 
-// Staff: Detailed bill for a single table — all non-cancelled orders + items
+// Staff: Detailed bill — "items" / subtotal = on-bill only (approved+); pending shown separately
 router.get('/:tableRoomId/bill', requireAuth, requireActiveStaffSubscription, async (req, res) => {
   const db = getClient(req);
   const { data: table, error: tErr } = await db
@@ -62,30 +106,22 @@ router.get('/:tableRoomId/bill', requireAuth, requireActiveStaffSubscription, as
 
   if (oErr) return res.status(500).json({ error: oErr.message });
 
-  const allItems = [];
-  for (const order of orders || []) {
-    for (const oi of order.order_items || []) {
-      allItems.push({
-        order_item_id: oi.id,
-        order_id: order.id,
-        order_status: order.status,
-        menu_item_id: oi.menu_item_id,
-        name: oi.menu_items?.name || 'Item',
-        image_url: oi.menu_items?.image_url,
-        quantity: oi.quantity,
-        price_at_time: oi.price_at_time,
-        line_total: Number(oi.price_at_time) * oi.quantity,
-      });
-    }
-  }
+  const list = orders || [];
+  const onBillOrders = list.filter((o) => ON_BILL_STATUSES.includes(o.status));
+  const pendingOrders = list.filter((o) => o.status === 'pending');
 
-  const subtotal = allItems.reduce((s, i) => s + i.line_total, 0);
+  const items = buildLineItemsFromOrders(onBillOrders);
+  const pending_items = buildLineItemsFromOrders(pendingOrders);
+  const subtotal = items.reduce((s, i) => s + i.line_total, 0);
+  const pending_subtotal = pending_items.reduce((s, i) => s + i.line_total, 0);
 
   res.json({
     table,
-    orders: orders || [],
-    items: allItems,
+    orders: list,
+    items,
     subtotal,
+    pending_items,
+    pending_subtotal,
     running_total: Number(table.running_total || 0),
   });
 });
@@ -105,19 +141,34 @@ router.post('/:tableRoomId/settle', requireAuth, requireActiveStaffSubscription,
   }
 
   const settled_total = Number(table.running_total || 0);
+  const ts = new Date().toISOString();
 
-  await db
+  // Close the check: mark unpaid orders served and detach all rows from this table so the next session is clean.
+  const { error: ordErr } = await db
     .from('orders')
-    .update({ status: 'served', updated_at: new Date().toISOString() })
+    .update({ status: 'served', table_room_id: null, updated_at: ts })
     .eq('table_room_id', table.id)
     .eq('restaurant_id', table.restaurant_id)
-    .in('status', ['pending', 'approved', 'preparing', 'ready']);
+    .neq('status', 'cancelled');
 
-  await db
+  if (ordErr) return res.status(500).json({ error: ordErr.message });
+
+  const { error: canErr } = await db
+    .from('orders')
+    .update({ table_room_id: null, updated_at: ts })
+    .eq('table_room_id', table.id)
+    .eq('restaurant_id', table.restaurant_id)
+    .eq('status', 'cancelled');
+
+  if (canErr) return res.status(500).json({ error: canErr.message });
+
+  const { error: rtErr } = await db
     .from('tables_rooms')
     .update({ running_total: 0 })
     .eq('id', table.id)
     .eq('restaurant_id', table.restaurant_id);
+
+  if (rtErr) return res.status(500).json({ error: rtErr.message });
 
   res.json({ settled_total, table_id: table.id, message: 'Table settled' });
 });
@@ -140,25 +191,49 @@ router.post('/:tableRoomId/transfer', requireAuth, requireActiveStaffSubscriptio
     return res.status(403).json({ error: 'Access denied' });
   }
 
-  const { data: orders } = await db
+  const { data: orderRows, error: oErr } = await db
     .from('orders')
-    .select('id, total_price')
+    .select('id, total_price, status, restaurant_id, table_room_id')
     .in('id', order_ids)
-    .eq('table_room_id', srcTable.id);
+    .eq('table_room_id', srcTable.id)
+    .eq('restaurant_id', srcTable.restaurant_id);
 
-  if (!orders?.length) return res.status(404).json({ error: 'No matching orders found' });
+  if (oErr) return res.status(500).json({ error: oErr.message });
 
-  const movedTotal = orders.reduce((s, o) => s + Number(o.total_price || 0), 0);
+  const movable = (orderRows || []).filter((o) => o.status !== 'cancelled');
+  if (!movable.length) {
+    return res.status(400).json({
+      error: 'No orders to transfer — select at least one order that is still on this table.',
+    });
+  }
 
-  await db
+  const movedTotal = movable.reduce((s, o) => s + Number(o.total_price || 0), 0);
+  const ids = movable.map((o) => o.id);
+
+  const { error: uErr } = await db
     .from('orders')
     .update({ table_room_id: dstTable.id, updated_at: new Date().toISOString() })
-    .in('id', orders.map((o) => o.id));
+    .in('id', ids);
 
-  await db.from('tables_rooms').update({ running_total: Math.max(0, Number(srcTable.running_total || 0) - movedTotal) }).eq('id', srcTable.id);
-  await db.from('tables_rooms').update({ running_total: Number(dstTable.running_total || 0) + movedTotal }).eq('id', dstTable.id);
+  if (uErr) return res.status(500).json({ error: uErr.message });
 
-  res.json({ moved_orders: orders.length, moved_total: movedTotal });
+  const { error: srcRtErr } = await db
+    .from('tables_rooms')
+    .update({ running_total: Math.max(0, Number(srcTable.running_total || 0) - movedTotal) })
+    .eq('id', srcTable.id)
+    .eq('restaurant_id', srcTable.restaurant_id);
+
+  if (srcRtErr) return res.status(500).json({ error: srcRtErr.message });
+
+  const { error: dstRtErr } = await db
+    .from('tables_rooms')
+    .update({ running_total: Number(dstTable.running_total || 0) + movedTotal })
+    .eq('id', dstTable.id)
+    .eq('restaurant_id', dstTable.restaurant_id);
+
+  if (dstRtErr) return res.status(500).json({ error: dstRtErr.message });
+
+  res.json({ moved_orders: movable.length, moved_total: movedTotal });
 });
 
 // Staff: Split bill calculation (equal split or by item)
@@ -195,7 +270,7 @@ router.post('/:tableRoomId/split', requireAuth, requireActiveStaffSubscription, 
       .from('orders')
       .select('id, order_items(id, quantity, price_at_time)')
       .eq('table_room_id', table.id)
-      .neq('status', 'cancelled');
+      .in('status', ON_BILL_STATUSES);
 
     const allOi = (orders || []).flatMap((o) => o.order_items || []);
     const oiMap = Object.fromEntries(allOi.map((oi) => [oi.id, oi]));

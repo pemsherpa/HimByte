@@ -13,6 +13,7 @@ import QRLanding     from './pages/customer/QRLanding';
 import MenuPage      from './pages/customer/MenuPage';
 import ServicesPage  from './pages/customer/ServicesPage';
 import BillPage        from './pages/customer/BillPage';
+import { GuestEsewaSuccessPage, GuestEsewaFailurePage } from './pages/customer/GuestEsewaReturn.jsx';
 
 import DashboardLayout    from './components/layout/DashboardLayout';
 import MerchantDashboard  from './pages/merchant/MerchantDashboard';
@@ -26,6 +27,7 @@ import MerchantReceipts   from './pages/merchant/MerchantReceipts';
 import GuestRequests      from './pages/merchant/GuestRequests';
 import VendorDueReport    from './pages/merchant/VendorDueReport';
 import HRWorkspace        from './pages/merchant/HRWorkspace';
+import { EsewaSuccessPage, EsewaFailurePage } from './pages/merchant/EsewaPaymentReturn.jsx';
 
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminRestaurants from './pages/admin/AdminRestaurants';
@@ -106,6 +108,8 @@ export default function App() {
         <Route path="/menu"   element={<MenuPage />} />
         <Route path="/services" element={<ServicesPage />} />
         <Route path="/bill" element={<BillPage />} />
+        <Route path="/bill/payments/esewa/success" element={<GuestEsewaSuccessPage />} />
+        <Route path="/bill/payments/esewa/failure" element={<GuestEsewaFailurePage />} />
 
         {/* Post-login redirect */}
         <Route path="/dashboard" element={
@@ -130,6 +134,8 @@ export default function App() {
           <Route path="qrcodes"     element={<Navigate to="/merchant/tables" replace />} />
           <Route path="vendor-due"  element={<OwnerOnly><VendorDueReport /></OwnerOnly>} />
           <Route path="hr"          element={<OwnerOnly><HRWorkspace /></OwnerOnly>} />
+          <Route path="payments/esewa/success" element={<EsewaSuccessPage />} />
+          <Route path="payments/esewa/failure" element={<EsewaFailurePage />} />
         </Route>
 
         {/* Super Admin (protected + role-restricted) */}

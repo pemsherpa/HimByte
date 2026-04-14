@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Loader2, RefreshCw } from 'lucide-react';
+import { Download, Loader2, RefreshCw, Wallet, Store } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useCartStore } from '../../stores/cartStore';
 import useGuestStore from '../../stores/guestStore';
@@ -8,15 +8,19 @@ import { downloadSessionReceiptPdf } from '../../lib/receiptPdf';
 import { DEMO_MODE } from '../../lib/supabase';
 import { aggregateLinesFromOrders, pendingOrderLines } from '../../lib/billAggregation';
 import toast from 'react-hot-toast';
+import { submitEsewaFormPost } from '../../lib/esewaForm.js';
 
 export default function BillView({ restaurant, sessionId }) {
   const cartItems = useCartStore((s) => s.items);
+  const tableRoomId = useCartStore((s) => s.tableRoomId);
   const guestEmail = useGuestStore((s) => s.email);
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingLedger, setSavingLedger] = useState(false);
+  const [esewaEnabled, setEsewaEnabled] = useState(false);
+  const [esewaLoading, setEsewaLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!sessionId) return;
@@ -35,6 +39,14 @@ export default function BillView({ restaurant, sessionId }) {
     setLoading(true);
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (DEMO_MODE) {
+      setEsewaEnabled(false);
+      return;
+    }
+    api.getEsewaPublicConfig().then((c) => setEsewaEnabled(!!c.enabled)).catch(() => setEsewaEnabled(false));
+  }, []);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -91,6 +103,30 @@ export default function BillView({ restaurant, sessionId }) {
       total: billVat.total,
     });
     toast.success('PDF downloaded');
+  }
+
+  async function handleGuestEsewa() {
+    if (!sessionId || !restaurant?.id || !tableRoomId) {
+      toast.error('Open this bill from your table QR so we know which table to charge.');
+      return;
+    }
+    if (!hasBill) {
+      toast.error('Nothing to pay yet — wait for staff to approve your order.');
+      return;
+    }
+    setEsewaLoading(true);
+    try {
+      const r = await api.initEsewaGuestBill({
+        session_id: sessionId,
+        restaurant_id: restaurant.id,
+        table_room_id: tableRoomId,
+      });
+      submitEsewaFormPost(r.formUrl, r.fields);
+    } catch (e) {
+      toast.error(e?.message || 'Could not start eSewa');
+    } finally {
+      setEsewaLoading(false);
+    }
   }
 
   async function handleSaveLedger() {
@@ -206,6 +242,61 @@ export default function BillView({ restaurant, sessionId }) {
                     <div className="flex justify-between text-base font-bold text-ink pt-1 border-t border-border">
                       <span>Total</span>
                       <span className="tabular-nums">{formatNpr(billVat.total)}</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 pt-4 border-t border-dashed border-border">
+                    <p className="text-[10px] font-bold text-muted uppercase tracking-wide mb-2">Payment options</p>
+                    <div className="rounded-xl border border-border bg-canvas/60 p-3 mb-3">
+                      <div className="flex gap-2 items-start">
+                        <Store size={16} className="text-primary shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-ink">Pay at counter</p>
+                          <p className="text-[11px] text-muted mt-0.5 leading-snug">
+                            Pay with cash or card at the register — staff will confirm against this bill.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-primary/25 bg-primary-soft/30 p-3">
+                      <div className="flex gap-2 items-start mb-2">
+                        <Wallet size={16} className="text-primary shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-semibold text-ink">Pay with eSewa</p>
+                          <p className="text-[11px] text-muted mt-0.5 leading-snug">
+                            Pay the amount on the venue register (running total). UAT test wallet: 9806800001–5,
+                            password Nepal@123, code 123456.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleGuestEsewa}
+                        disabled={
+                          !esewaEnabled ||
+                          esewaLoading ||
+                          !hasBill ||
+                          !tableRoomId ||
+                          DEMO_MODE
+                        }
+                        className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold bg-primary text-white hover:bg-primary-dark disabled:opacity-45 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {esewaLoading ? <Loader2 size={14} className="animate-spin" /> : <Wallet size={14} />}
+                        Pay with eSewa
+                      </button>
+                      {!tableRoomId && (
+                        <p className="text-[10px] text-muted mt-2">
+                          Use the QR link for your table or room so this bill is tied to the right check.
+                        </p>
+                      )}
+                      {tableRoomId && !esewaEnabled && !DEMO_MODE && (
+                        <p className="text-[10px] text-muted mt-2">
+                          eSewa is not configured on the server yet (see venue .env).
+                        </p>
+                      )}
+                      {DEMO_MODE && (
+                        <p className="text-[10px] text-muted mt-2">Not available in offline demo mode.</p>
+                      )}
                     </div>
                   </div>
                 </div>

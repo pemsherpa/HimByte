@@ -88,7 +88,10 @@ export default function HRWorkspace() {
     api
       .listEmployeeShifts(restaurantId, selectedId)
       .then(setShifts)
-      .catch(() => setShifts([]));
+      .catch((err) => {
+        setShifts([]);
+        toast.error(err?.message || 'Could not load shifts — apply migration 012 in Supabase SQL editor if the employee_shifts table is missing.');
+      });
   }, [restaurantId, selectedId, tab]);
 
   const monthlyPayroll = useMemo(() => {

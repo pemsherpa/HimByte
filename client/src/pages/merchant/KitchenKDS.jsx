@@ -4,7 +4,6 @@ import { ChefHat } from 'lucide-react';
 import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import { useOrderStore } from '../../stores/orderStore';
-import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useStaffOrdersBootstrap } from '../../hooks/useStaffOrdersBootstrap';
 import KdsOrderCard from '../../components/merchant/kds-order-card';
 import PendingItemsSummary from '../../components/merchant/pending-items-summary';
@@ -29,8 +28,6 @@ export default function KitchenKDS() {
   const { activeOrders, updateStatus } = useOrderStore();
   const { restaurantId } = useAuthStore();
   const loading = useStaffOrdersBootstrap(restaurantId);
-
-  useRealtimeOrders(restaurantId);
 
   const tickets = useMemo(
     () =>

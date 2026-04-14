@@ -4,7 +4,6 @@ import { Bell, CheckCircle, ChefHat, Clock } from 'lucide-react';
 import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import { useOrderStore } from '../../stores/orderStore';
-import { useRealtimeOrders } from '../../hooks/useRealtimeOrders';
 import { useStaffOrdersBootstrap } from '../../hooks/useStaffOrdersBootstrap';
 import KdsOrderCard from '../../components/merchant/kds-order-card';
 import PendingItemsSummary from '../../components/merchant/pending-items-summary';
@@ -29,8 +28,6 @@ export default function OrderGate() {
   const { pendingOrders, activeOrders, moveToActive, removeFromPending, updateStatus } = useOrderStore();
   const { restaurantId } = useAuthStore();
   const loading = useStaffOrdersBootstrap(restaurantId);
-
-  useRealtimeOrders(restaurantId);
 
   async function handleApprove(orderId) {
     try {

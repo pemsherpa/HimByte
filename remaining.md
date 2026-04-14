@@ -169,15 +169,6 @@ Shipped in `client/src/pages/merchant/TableBills.jsx` + `server/src/routes/table
 
 **If upload fails:** confirm the migration ran and the user is logged in as staff (JWT required for Storage policies).
 
-### 20. Nepali Localization (M–L)
-
-No i18n framework or Nepali strings. Need:
-
-- `react-i18next` or similar
-- Nepali (ne) translation file
-- NPR currency formatter utility (Rs. X,XX,XXX.XX)
-- Date formatting in Nepali (Bikram Sambat calendar optional)
-
 ### 21. Messaging Depth (M)
 
 Customer-to-waiter messages are `service_requests` rows — no threaded conversation, no staff reply, no read receipts. For the "messaging" feature to be a selling point, consider a lightweight chat model or at minimum a staff inbox page.
@@ -281,3 +272,5 @@ Menus are in one language only. Tourist-heavy venues need English + Nepali (+ po
 | **P1**   | 11 items | Revenue, operations, staff workflow     |
 | **P2**   | 9 items  | Polish, compliance, performance         |
 | **P3**   | 9 items  | Market expansion, hardware, scale       |
+
+

@@ -9,16 +9,28 @@ import { requireAuth } from './middleware/auth.js';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+const isProd = process.env.NODE_ENV === 'production';
+
+if (isProd) {
+  app.set('trust proxy', 1);
+}
+
 app.use(helmet());
 app.use(cors({
-  origin: (origin, cb) => {
+  origin(origin, cb) {
     if (!origin) return cb(null, true);
-    const allowed = (process.env.CLIENT_URL || '').split(',').filter(Boolean);
-    if (allowed.length && allowed.includes(origin)) return cb(null, true);
-    if (/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+    const allowed = (process.env.CLIENT_URL || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (allowed.includes(origin)) return cb(null, true);
+    if (!isProd) {
       return cb(null, true);
     }
-    cb(null, true);
+    if (allowed.length === 0) {
+      console.warn('[cors] NODE_ENV=production but CLIENT_URL is empty — refusing non-localhost origins.');
+    }
+    return cb(null, false);
   },
 }));
 app.use(morgan('dev'));
@@ -73,6 +85,7 @@ if (DEMO_MODE) {
   const { default: tableRoutes } = await import('./routes/tables.js');
   const { default: receiptRoutes } = await import('./routes/receipts.js');
   const { default: billingRoutes } = await import('./routes/billing.js');
+  const { default: paymentsEsewaRoutes } = await import('./routes/payments-esewa.js');
   const { default: ownerOpsRoutes } = await import('./routes/owner-ops.js');
   app.use('/api/restaurants', restaurantRoutes);
   app.use('/api/menu', menuRoutes);
@@ -83,6 +96,7 @@ if (DEMO_MODE) {
   app.use('/api/tables', tableRoutes);
   app.use('/api/receipts', receiptRoutes);
   app.use('/api/billing', billingRoutes);
+  app.use('/api/payments', paymentsEsewaRoutes);
   app.use('/api', ownerOpsRoutes);
   console.log(`✓  Supabase connected → ${SUPABASE_URL}`);
 }

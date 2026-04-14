@@ -3,13 +3,15 @@ import { AnimatePresence, motion } from 'framer-motion';
 import {
   Receipt, X, CreditCard, Split, ArrowRightLeft,
   Printer, Loader2, Table2, BedDouble, CheckCircle,
-  Users, Minus, Plus,
+  Users, Minus, Plus, Wallet,
 } from 'lucide-react';
 import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
 import toast from 'react-hot-toast';
+import { supabase, DEMO_MODE } from '../../lib/supabase';
+import { submitEsewaFormPost } from '../../lib/esewaForm.js';
 
 function escapeHtml(s) {
   return String(s ?? '')
@@ -32,6 +34,8 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferTarget, setTransferTarget] = useState('');
   const [selectedOrders, setSelectedOrders] = useState([]);
+  const [esewaEnabled, setEsewaEnabled] = useState(false);
+  const [esewaLoading, setEsewaLoading] = useState(false);
 
   const load = useCallback(() => {
     if (!tableRoomId) return;
@@ -45,6 +49,36 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    api.getEsewaConfig().then((c) => setEsewaEnabled(!!c.enabled)).catch(() => setEsewaEnabled(false));
+  }, []);
+
+  useEffect(() => {
+    if (!tableRoomId || DEMO_MODE || !supabase) return;
+    let t;
+    const debounced = () => {
+      clearTimeout(t);
+      t = setTimeout(() => load(), 200);
+    };
+    const channel = supabase
+      .channel(`bill-drawer:${tableRoomId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders', filter: `table_room_id=eq.${tableRoomId}` },
+        debounced,
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'tables_rooms', filter: `id=eq.${tableRoomId}` },
+        debounced,
+      )
+      .subscribe();
+    return () => {
+      clearTimeout(t);
+      supabase.removeChannel(channel);
+    };
+  }, [tableRoomId, load]);
+
+  useEffect(() => {
     if (!bill?.items?.length) return;
     setItemGroupAssignment((prev) => {
       const next = { ...prev };
@@ -53,7 +87,7 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
       });
       return next;
     });
-  }, [bill]);
+  }, [bill?.items]);
 
   async function handleSettle() {
     if (!window.confirm('Settle this table? All active orders will be marked as served and the bill reset to Rs. 0.')) return;
@@ -90,6 +124,23 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
     } catch { toast.error('Failed to calculate split'); }
   }
 
+  async function handleEsewaPayAtCounter() {
+    if (!tableRoomId) return;
+    if (Number(bill?.running_total || 0) <= 0) {
+      toast.error('Nothing on the running bill to charge.');
+      return;
+    }
+    setEsewaLoading(true);
+    try {
+      const r = await api.initEsewaTableBill(tableRoomId);
+      submitEsewaFormPost(r.formUrl, r.fields);
+    } catch (e) {
+      toast.error(e?.message || 'Could not start eSewa');
+    } finally {
+      setEsewaLoading(false);
+    }
+  }
+
   async function handleTransfer() {
     if (!transferTarget || !selectedOrders.length) {
       toast.error('Select a target table and at least one order');
@@ -105,7 +156,9 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
       setSelectedOrders([]);
       load();
       onSettled?.();
-    } catch { toast.error('Failed to transfer'); }
+    } catch (err) {
+      toast.error(err?.message || 'Failed to transfer');
+    }
   }
 
   function handlePrint() {
@@ -113,9 +166,15 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
     if (!w || !bill) return;
     const venue = restaurantName || 'Restaurant';
     const when = new Date().toLocaleString();
-    const rows = bill.items.map((i) =>
+    const pending = bill.pending_items || [];
+    const rowsOnBill = bill.items.map((i) =>
       `<tr><td>${escapeHtml(i.name)}</td><td style="text-align:center">${i.quantity}</td><td style="text-align:right">Rs. ${i.line_total}</td></tr>`
     ).join('');
+    const rowsPending = pending.length
+      ? `<tr><td colspan="3" style="font-size:11px;padding-top:10px;color:#666">Awaiting staff approval (not on bill yet)</td></tr>${pending.map((i) =>
+          `<tr><td>${escapeHtml(i.name)}</td><td style="text-align:center">${i.quantity}</td><td style="text-align:right">Rs. ${i.line_total}</td></tr>`).join('')}`
+      : '';
+    const rows = rowsOnBill + rowsPending;
     w.document.write(`<!DOCTYPE html><html><head><title>Bill — ${escapeHtml(bill.table.identifier)}</title>
 <style>body{font-family:system-ui,monospace;padding:16px;max-width:360px;margin:0 auto}table{width:100%;border-collapse:collapse}
 td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}p{margin:2px 0;font-size:12px;color:#666}
@@ -125,7 +184,7 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
 <h2>${escapeHtml(bill.table.identifier)}</h2><p>Bill · ${when}</p><hr/>
 <table><thead><tr><th style="text-align:left">Item</th><th>Qty</th><th style="text-align:right">Amount</th></tr></thead>
 <tbody>${rows}</tbody></table>
-<div class="total">Total: Rs. ${bill.subtotal}</div>
+<div class="total">On bill: Rs. ${bill.subtotal}${pending.length ? ` · Pending approval: Rs. ${bill.pending_subtotal ?? 0}` : ''}</div>
 <p style="margin-top:16px;text-align:center;font-size:11px">Thank you! — Himbyte</p>
 <script>setTimeout(()=>window.print(),300)</script></body></html>`);
     w.document.close();
@@ -157,44 +216,104 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
             <div className="flex items-center justify-center py-16">
               <Loader2 className="animate-spin text-primary" size={28} />
             </div>
-          ) : !bill?.items?.length ? (
+          ) : !bill?.items?.length && !(bill?.pending_items?.length) ? (
             <div className="text-center py-16 text-muted">
               <Receipt size={36} className="mx-auto mb-3 opacity-20" />
               <p className="text-sm">No active orders on this table.</p>
             </div>
           ) : (
             <>
-              <div className="space-y-2 mb-5">
-                {bill.items.map((item) => (
-                  <div key={item.order_item_id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-ink truncate">{item.name}</p>
-                      <p className="text-xs text-muted">
-                        Rs. {item.price_at_time} x {item.quantity}
-                        {showTransfer && (
-                          <span className="ml-1.5">
-                            <Badge status={item.order_status} className="text-[9px]" />
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <span className="text-sm font-bold text-ink">Rs. {item.line_total}</span>
+              {bill.items?.length > 0 && (
+                <>
+                  <p className="text-[10px] font-bold text-muted uppercase tracking-wide mb-2">On the bill (approved)</p>
+                  <div className="space-y-2 mb-5">
+                    {bill.items.map((item) => (
+                      <div key={item.order_item_id} className="flex items-center gap-3 py-2 border-b border-border last:border-0">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-ink truncate">{item.name}</p>
+                          <p className="text-xs text-muted">
+                            Rs. {item.price_at_time} x {item.quantity}
+                            {showTransfer && (
+                              <span className="ml-1.5">
+                                <Badge status={item.order_status} className="text-[9px]" />
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold text-ink">Rs. {item.line_total}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
+
+              {(bill.pending_items?.length > 0) && (
+                <>
+                  <p className="text-[10px] font-bold text-muted uppercase tracking-wide mb-2">Awaiting staff approval</p>
+                  <div className="space-y-2 mb-5 rounded-xl border border-gold/30 bg-gold-soft/40 px-3 py-2">
+                    {bill.pending_items.map((item) => (
+                      <div key={item.order_item_id} className="flex items-center gap-3 py-2 border-b border-gold/20 last:border-0">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-ink truncate">{item.name}</p>
+                          <p className="text-xs text-muted">
+                            Rs. {item.price_at_time} x {item.quantity}
+                            {showTransfer && (
+                              <span className="ml-1.5">
+                                <Badge status={item.order_status} className="text-[9px]" />
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold text-ink">Rs. {item.line_total}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
 
               <div className="bg-canvas rounded-xl p-4 mb-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-ink">Subtotal</span>
+                  <span className="text-sm font-bold text-ink">Subtotal (on bill)</span>
                   <span className="text-lg font-black text-primary">Rs. {bill.subtotal}</span>
                 </div>
-                {bill.running_total !== bill.subtotal && (
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="text-xs text-muted">Running total (approved+)</span>
+                {(bill.pending_subtotal > 0) && (
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs text-muted">Not on bill until approved</span>
+                    <span className="text-sm font-semibold text-body">Rs. {bill.pending_subtotal}</span>
+                  </div>
+                )}
+                {Math.abs(Number(bill.subtotal || 0) - Number(bill.running_total || 0)) > 0.01 && (
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                    <span className="text-xs text-muted">Running total (table)</span>
                     <span className="text-sm font-semibold text-body">Rs. {bill.running_total}</span>
                   </div>
                 )}
               </div>
+
+              <Card className="p-4 mb-5 border border-primary/20 bg-primary-soft/25">
+                <p className="text-xs font-bold text-muted uppercase mb-1">Pay at counter (eSewa)</p>
+                <p className="text-[11px] text-body mb-3 leading-relaxed">
+                  Charges the <span className="font-semibold text-ink">running bill total</span> via eSewa ePay v2 (testing portal when UAT is configured).
+                  UAT test login: eSewa ID 9806800001–9806800005, password Nepal@123, verification token 123456 — see{' '}
+                  <a href="https://developer.esewa.com.np/pages/Test-credentials" target="_blank" rel="noreferrer" className="text-primary font-medium underline">
+                    eSewa test credentials
+                  </a>.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleEsewaPayAtCounter}
+                  disabled={!esewaEnabled || settling || esewaLoading || Number(bill.running_total || 0) <= 0}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-primary text-white text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {esewaLoading ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />}
+                  Pay Rs. {Number(bill.running_total || 0).toLocaleString()} with eSewa
+                </button>
+                {!esewaEnabled && (
+                  <p className="text-[10px] text-muted mt-2">
+                    Add <span className="font-mono text-ink/80">ESEWA_SECRET_KEY</span> to server env to enable (see .env.example).
+                  </p>
+                )}
+              </Card>
 
               {/* Split bill section */}
               <AnimatePresence>
@@ -301,7 +420,7 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
                         ))}
                       </select>
                       <div className="space-y-1 mb-3">
-                        {(bill.orders || []).filter((o) => !['cancelled', 'served'].includes(o.status)).map((o) => (
+                        {(bill.orders || []).filter((o) => o.status !== 'cancelled').map((o) => (
                           <label key={o.id} className="flex items-center gap-2 px-3 py-2 bg-canvas rounded-lg cursor-pointer">
                             <input type="checkbox" checked={selectedOrders.includes(o.id)}
                               onChange={(e) => setSelectedOrders((prev) =>
@@ -324,7 +443,7 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
           )}
         </div>
 
-        {bill?.items?.length > 0 && (
+        {(bill?.items?.length > 0 || bill?.pending_items?.length > 0) && (
           <div className="border-t border-border px-5 py-4 space-y-2">
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => { setShowSplit(!showSplit); setShowTransfer(false); }}
@@ -380,6 +499,32 @@ export default function TableBills() {
   }, [restaurantId]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!restaurantId || DEMO_MODE || !supabase) return;
+    let t;
+    const debounced = () => {
+      clearTimeout(t);
+      t = setTimeout(() => load(), 200);
+    };
+    const channel = supabase
+      .channel(`table-bills-list:${restaurantId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tables_rooms', filter: `restaurant_id=eq.${restaurantId}` },
+        debounced,
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
+        debounced,
+      )
+      .subscribe();
+    return () => {
+      clearTimeout(t);
+      supabase.removeChannel(channel);
+    };
+  }, [restaurantId, load]);
 
   if (!restaurantId) return (
     <div>

@@ -112,6 +112,33 @@ export default function MenuPage() {
     api.getMenuItems(restaurant.id, activeCategory).then(setItems).catch(() => setItems([]));
   }, [restaurant?.id, activeCategory]);
 
+  useEffect(() => {
+    if (!restaurant?.id || !activeCategory || DEMO_MODE || !supabase) return;
+    let t;
+    const channel = supabase
+      .channel(`menu-live:${restaurant.id}:${activeCategory}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'menu_items',
+          filter: `restaurant_id=eq.${restaurant.id}`,
+        },
+        () => {
+          clearTimeout(t);
+          t = setTimeout(() => {
+            api.getMenuItems(restaurant.id, activeCategory).then(setItems).catch(() => {});
+          }, 250);
+        },
+      )
+      .subscribe();
+    return () => {
+      clearTimeout(t);
+      supabase.removeChannel(channel);
+    };
+  }, [restaurant?.id, activeCategory]);
+
   const filtered = items.filter((i) =>
     !search || i.name.toLowerCase().includes(search.toLowerCase())
   );

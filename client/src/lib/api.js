@@ -26,6 +26,13 @@ async function publicPost(path, body) {
   return data;
 }
 
+async function publicGet(path) {
+  const res = await fetch(`${API_BASE}${path}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed');
+  return data;
+}
+
 export const api = {
   // ── Session (staff) ───────────────────────────
   getMe: () => request('/me'),
@@ -70,6 +77,19 @@ export const api = {
     request(`/tables/${fromTableId}/transfer`, { method: 'POST', body: JSON.stringify(payload) }),
   splitBill: (tableRoomId, payload) =>
     request(`/tables/${tableRoomId}/split`, { method: 'POST', body: JSON.stringify(payload) }),
+
+  // ── eSewa ePay v2 (pay at counter) ─────────
+  getEsewaConfig: () => request('/payments/esewa/config'),
+  initEsewaTableBill: (tableRoomId) =>
+    request('/payments/esewa/table-bill/init', {
+      method: 'POST',
+      body: JSON.stringify({ table_room_id: tableRoomId }),
+    }),
+  verifyEsewaPayment: (data) =>
+    request('/payments/esewa/verify', { method: 'POST', body: JSON.stringify({ data }) }),
+  getEsewaPublicConfig: () => publicGet('/payments/esewa/public-config'),
+  initEsewaGuestBill: (body) => publicPost('/payments/esewa/guest/init', body),
+  verifyEsewaGuestPayment: (data) => publicPost('/payments/esewa/guest/verify', { data }),
 
   // ── Menu Item Update ──────────────────────
   updateMenuItem: (id, body) =>

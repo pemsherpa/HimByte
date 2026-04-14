@@ -4,9 +4,30 @@
  * Activated when SUPABASE_URL env var is not set.
  */
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
+import {
+  mergeOrderLineItems,
+  MAX_ORDER_LINE_ITEMS,
+  sanitizeContactField,
+  sanitizeNotes,
+} from '../lib/orderValidation.js';
 
 const router = Router();
+
+const guestOrderLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const guestServiceRequestLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const RESTAURANT_ID = 'a0000000-0000-0000-0000-000000000001';
 
@@ -202,35 +223,55 @@ router.get('/menu/:restaurantId/items', (req, res) => {
   res.json(items);
 });
 
-// POST /api/orders  — place order (anonymous guest)
-router.post('/orders', (req, res) => {
-  const { restaurant_id, table_room_id, items = [], notes, guest_phone, guest_email } = req.body;
-  if (!items.length) return res.status(400).json({ error: 'Order must have at least one item' });
+// POST /api/orders  — place order (anonymous guest; prices from server catalog, not client)
+router.post('/orders', guestOrderLimiter, (req, res) => {
+  const rid = req.body.restaurant_id || RESTAURANT_ID;
+  const { table_room_id, items = [] } = req.body;
+  const merged = mergeOrderLineItems(items);
+  if (!merged.length) return res.status(400).json({ error: 'Order must have at least one item' });
+  if (merged.length > MAX_ORDER_LINE_ITEMS) {
+    return res.status(400).json({ error: `Maximum ${MAX_ORDER_LINE_ITEMS} distinct items per order` });
+  }
 
-  const total_price = items.reduce((s, i) => s + i.price_at_time * i.quantity, 0);
+  if (table_room_id) {
+    const trOk = TABLES_ROOMS.some((t) => t.id === table_room_id && t.restaurant_id === rid);
+    if (!trOk) return res.status(400).json({ error: 'Table or room is invalid for this restaurant' });
+  }
+
+  let total_price = 0;
+  const pricedLines = [];
+  for (const m of merged) {
+    const menuItem = MENU_ITEMS.find((x) => x.id === m.menu_item_id && x.restaurant_id === rid);
+    if (!menuItem) return res.status(400).json({ error: 'One or more menu items are invalid for this restaurant' });
+    if (!menuItem.is_available) return res.status(400).json({ error: 'One or more items are not available' });
+    const unit = Number(menuItem.price);
+    total_price += unit * m.quantity;
+    pricedLines.push({ ...m, price_at_time: unit });
+  }
+
   const tableRoom = TABLES_ROOMS.find((t) => t.id === table_room_id);
 
   const order = {
     id: crypto.randomUUID(),
-    restaurant_id: restaurant_id || RESTAURANT_ID,
+    restaurant_id: rid,
     table_room_id: table_room_id || null,
     status: 'pending',
     total_price,
-    notes: notes || null,
-    guest_phone: guest_phone || null,
-    guest_email: guest_email || null,
+    notes: sanitizeNotes(req.body.notes),
+    guest_phone: sanitizeContactField(req.body.guest_phone),
+    guest_email: sanitizeContactField(req.body.guest_email),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     tables_rooms: tableRoom ? { identifier: tableRoom.identifier, type: tableRoom.type } : null,
-    session_id: req.body.session_id || null,
-    order_items: items.map((i) => {
+    session_id: req.body.session_id ? String(req.body.session_id).slice(0, 128) : null,
+    order_items: pricedLines.map((i) => {
       const menuItem = MENU_ITEMS.find((m) => m.id === i.menu_item_id);
       return {
         id: crypto.randomUUID(),
         order_id: null,
         menu_item_id: i.menu_item_id,
         quantity: i.quantity,
-        price_at_time: i.price_at_time,   // schema field
+        price_at_time: i.price_at_time,
         menu_items: menuItem ? { name: menuItem.name, image_url: menuItem.image_url } : null,
       };
     }),
@@ -262,7 +303,7 @@ router.patch('/orders/:orderId/status', (req, res) => {
 });
 
 // POST /api/service-requests
-router.post('/service-requests', (req, res) => {
+router.post('/service-requests', guestServiceRequestLimiter, (req, res) => {
   const rid = req.body.restaurant_id || RESTAURANT_ID;
   const tr = TABLES_ROOMS.find((t) => t.id === req.body.table_room_id);
   const sr = {
