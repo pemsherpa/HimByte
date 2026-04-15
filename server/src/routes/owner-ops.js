@@ -5,6 +5,22 @@ import { requireActiveStaffSubscription } from '../middleware/subscription.js';
 
 const router = Router();
 
+const EMPLOYEE_SHIFTS_MISSING_MSG =
+  'Shifts need the employee_shifts table. In Supabase SQL editor, run supabase/migrations/012_employee_shifts_and_tables_rooms_rls.sql, then reload.';
+
+function isEmployeeShiftsTableMissing(error) {
+  if (!error) return false;
+  const msg = String(error.message || '');
+  if (!msg.includes('employee_shifts')) return false;
+  return (
+    msg.includes('schema cache') ||
+    msg.includes('does not exist') ||
+    msg.includes('Could not find') ||
+    error.code === '42P01' ||
+    error.code === 'PGRST205'
+  );
+}
+
 // ── Vendors ─────────────────────────────────────────────────
 router.get('/owner/:restaurantId/vendors', requireAuth, requireRestaurant, requireOwnerOrSuper, requireActiveStaffSubscription, async (req, res) => {
   const { data, error } = await supabase
@@ -252,7 +268,12 @@ router.get('/owner/:restaurantId/employees/:employeeId/shifts', requireAuth, req
     .eq('employee_id', req.params.employeeId)
     .order('weekday', { ascending: true })
     .order('start_time', { ascending: true });
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    if (isEmployeeShiftsTableMissing(error)) {
+      return res.status(503).json({ error: EMPLOYEE_SHIFTS_MISSING_MSG, code: 'employee_shifts_missing' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
   res.json(data || []);
 });
 
@@ -287,7 +308,12 @@ router.post('/owner/:restaurantId/employees/:employeeId/shifts', requireAuth, re
     })
     .select()
     .single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    if (isEmployeeShiftsTableMissing(error)) {
+      return res.status(503).json({ error: EMPLOYEE_SHIFTS_MISSING_MSG, code: 'employee_shifts_missing' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
   res.status(201).json(data);
 });
 
@@ -297,7 +323,13 @@ router.patch('/owner/:restaurantId/employee-shifts/:id', requireAuth, requireRes
     .select('id, restaurant_id')
     .eq('id', req.params.id)
     .single();
-  if (fErr || !row) return res.status(404).json({ error: 'Shift not found' });
+  if (fErr) {
+    if (isEmployeeShiftsTableMissing(fErr)) {
+      return res.status(503).json({ error: EMPLOYEE_SHIFTS_MISSING_MSG, code: 'employee_shifts_missing' });
+    }
+    return res.status(500).json({ error: fErr.message });
+  }
+  if (!row) return res.status(404).json({ error: 'Shift not found' });
   if (row.restaurant_id !== req.restaurantId) return res.status(403).json({ error: 'Access denied' });
 
   const patch = {};
@@ -320,7 +352,12 @@ router.patch('/owner/:restaurantId/employee-shifts/:id', requireAuth, requireRes
     .eq('restaurant_id', req.restaurantId)
     .select()
     .single();
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    if (isEmployeeShiftsTableMissing(error)) {
+      return res.status(503).json({ error: EMPLOYEE_SHIFTS_MISSING_MSG, code: 'employee_shifts_missing' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
   res.json(data);
 });
 
@@ -330,11 +367,22 @@ router.delete('/owner/:restaurantId/employee-shifts/:id', requireAuth, requireRe
     .select('id, restaurant_id')
     .eq('id', req.params.id)
     .single();
-  if (fErr || !row) return res.status(404).json({ error: 'Shift not found' });
+  if (fErr) {
+    if (isEmployeeShiftsTableMissing(fErr)) {
+      return res.status(503).json({ error: EMPLOYEE_SHIFTS_MISSING_MSG, code: 'employee_shifts_missing' });
+    }
+    return res.status(500).json({ error: fErr.message });
+  }
+  if (!row) return res.status(404).json({ error: 'Shift not found' });
   if (row.restaurant_id !== req.restaurantId) return res.status(403).json({ error: 'Access denied' });
 
   const { error } = await supabase.from('employee_shifts').delete().eq('id', req.params.id).eq('restaurant_id', req.restaurantId);
-  if (error) return res.status(500).json({ error: error.message });
+  if (error) {
+    if (isEmployeeShiftsTableMissing(error)) {
+      return res.status(503).json({ error: EMPLOYEE_SHIFTS_MISSING_MSG, code: 'employee_shifts_missing' });
+    }
+    return res.status(500).json({ error: error.message });
+  }
   res.status(204).send();
 });
 

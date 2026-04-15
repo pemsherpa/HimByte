@@ -37,6 +37,7 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
   const [esewaEnabled, setEsewaEnabled] = useState(false);
   const [esewaHost, setEsewaHost] = useState('');
   const [esewaLoading, setEsewaLoading] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
 
   const load = useCallback(() => {
     if (!tableRoomId) return;
@@ -102,12 +103,16 @@ function BillDrawer({ tableRoomId, onClose, allTables, restaurantName, onSettled
     if (!window.confirm('Settle this table? All active orders will be marked as served and the bill reset to Rs. 0.')) return;
     setSettling(true);
     try {
-      const res = await api.settleTable(tableRoomId);
-      toast.success(`Table settled! Total: Rs. ${res.settled_total}`);
+      const res = await api.settleTable(tableRoomId, { payment_method: paymentMethod });
+      const pmLabel = { cash: 'Cash', digital_wallet: 'Digital wallet', bank_transfer: 'Bank transfer' }[paymentMethod] || paymentMethod;
+      toast.success(`Table settled (${pmLabel}) — Rs. ${res.settled_total}`);
       onSettled?.();
       onClose();
-    } catch { toast.error('Failed to settle'); }
-    finally { setSettling(false); }
+    } catch (e) {
+      toast.error(e?.message || 'Failed to settle');
+    } finally {
+      setSettling(false);
+    }
   }
 
   async function handleSplitEqual() {
@@ -208,9 +213,9 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
       <motion.div
         initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
         transition={{ type: 'spring', damping: 28, stiffness: 350 }}
-        className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-surface z-50 flex flex-col shadow-2xl"
+        className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-surface z-50 flex min-h-0 flex-col shadow-2xl"
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex shrink-0 items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2.5">
             <Receipt size={18} className="text-primary" />
             <h2 className="text-base font-bold text-ink">{bill?.table?.identifier || 'Bill'}</h2>
@@ -220,7 +225,7 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-4">
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="animate-spin text-primary" size={28} />
@@ -458,7 +463,7 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
         </div>
 
         {(bill?.items?.length > 0 || bill?.pending_items?.length > 0) && (
-          <div className="border-t border-border px-5 py-4 space-y-2">
+          <div className="shrink-0 border-t border-border bg-surface px-5 py-4 space-y-2 relative z-10">
             <div className="grid grid-cols-2 gap-2">
               <button onClick={() => { setShowSplit(!showSplit); setShowTransfer(false); }}
                 className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-semibold border transition-colors
@@ -470,6 +475,18 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
                   ${showTransfer ? 'bg-primary text-white border-primary' : 'bg-surface text-body border-border hover:border-primary/40'}`}>
                 <ArrowRightLeft size={15} /> Transfer
               </button>
+            </div>
+            <div className="mb-3">
+              <label className="text-[10px] font-bold text-muted uppercase tracking-wide block mb-1.5">Payment method</label>
+              <select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                className="w-full rounded-xl border border-border bg-canvas px-3 py-2.5 text-sm text-ink"
+              >
+                <option value="cash">Cash</option>
+                <option value="digital_wallet">Digital wallet</option>
+                <option value="bank_transfer">Bank transfer</option>
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <button onClick={handlePrint}

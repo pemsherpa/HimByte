@@ -5,6 +5,8 @@ import { requireActiveStaffSubscription } from '../middleware/subscription.js';
 
 const router = Router();
 
+const SETTLE_PAYMENT_METHODS = new Set(['cash', 'digital_wallet', 'bank_transfer', 'esewa', 'manual']);
+
 /**
  * Orders that count toward tables_rooms.running_total (pending → approved adds to the bill).
  * Pending-only orders have line items in DB but are not on the check until approved.
@@ -175,6 +177,9 @@ router.get('/:tableRoomId/bill', requireAuth, requireActiveStaffSubscription, as
 
 // Staff: Settle / close a table — mark active orders as served, reset running_total
 router.post('/:tableRoomId/settle', requireAuth, requireActiveStaffSubscription, async (req, res) => {
+  const rawMethod = req.body?.payment_method != null ? String(req.body.payment_method).trim() : 'cash';
+  const payment_method = SETTLE_PAYMENT_METHODS.has(rawMethod) ? rawMethod : 'cash';
+
   const db = getClient(req);
   const { data: table, error: tErr } = await db
     .from('tables_rooms')
@@ -219,7 +224,7 @@ router.post('/:tableRoomId/settle', requireAuth, requireActiveStaffSubscription,
         total_amount: subtotal,
         pan_display: rest?.vat_pan_number || null,
         table_room_id: table.id,
-        payment_method: 'manual',
+        payment_method,
         payment_ref: null,
       });
       if (!rErr && receipt?.id) receiptId = receipt.id;
@@ -257,11 +262,17 @@ router.post('/:tableRoomId/settle', requireAuth, requireActiveStaffSubscription,
 
   await markTablePaidSafe(db, table.id, table.restaurant_id, {
     last_paid_at: ts,
-    last_payment_method: 'manual',
+    last_payment_method: payment_method,
     last_payment_ref: null,
   });
 
-  res.json({ settled_total, table_id: table.id, receipt_id: receiptId, message: 'Table settled' });
+  res.json({
+    settled_total,
+    table_id: table.id,
+    receipt_id: receiptId,
+    payment_method,
+    message: 'Table settled',
+  });
 });
 
 // Staff: Transfer order items to another table

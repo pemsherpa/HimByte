@@ -90,7 +90,10 @@ export default function HRWorkspace() {
       .then(setShifts)
       .catch((err) => {
         setShifts([]);
-        toast.error(err?.message || 'Could not load shifts — apply migration 012 in Supabase SQL editor if the employee_shifts table is missing.');
+        toast.error(
+          err?.message ||
+            'Could not load shifts. If this is a new project, run supabase/migrations/012_employee_shifts_and_tables_rooms_rls.sql in the Supabase SQL editor.',
+        );
       });
   }, [restaurantId, selectedId, tab]);
 

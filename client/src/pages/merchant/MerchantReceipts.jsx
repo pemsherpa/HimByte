@@ -1,17 +1,73 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import Card from '../../components/ui/Card';
+import Button from '../../components/ui/Button';
 import { formatNpr } from '../../lib/vat';
 import toast from 'react-hot-toast';
 import { supabase, DEMO_MODE } from '../../lib/supabase';
+
+const PERIOD_OPTIONS = [
+  { id: 'day', label: 'Today' },
+  { id: 'week', label: 'This week' },
+  { id: 'month', label: 'This month' },
+  { id: 'year', label: 'This year' },
+  { id: 'all', label: 'All time' },
+];
+
+/** Local calendar bounds as ISO strings for API ?from=&to= */
+function getReceiptQueryForPeriod(periodId) {
+  if (periodId === 'all') return {};
+  const now = new Date();
+  const startOfLocalDay = (d) => {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  };
+  const endOfLocalDay = (d) => {
+    const x = new Date(d);
+    x.setHours(23, 59, 59, 999);
+    return x;
+  };
+  const startOfWeekMonday = (d) => {
+    const x = new Date(d);
+    const day = x.getDay();
+    const daysSinceMon = (day + 6) % 7;
+    x.setDate(x.getDate() - daysSinceMon);
+    return startOfLocalDay(x);
+  };
+  if (periodId === 'day') {
+    return {
+      from: startOfLocalDay(now).toISOString(),
+      to: endOfLocalDay(now).toISOString(),
+    };
+  }
+  if (periodId === 'week') {
+    return {
+      from: startOfWeekMonday(now).toISOString(),
+      to: endOfLocalDay(now).toISOString(),
+    };
+  }
+  if (periodId === 'month') {
+    const start = startOfLocalDay(new Date(now.getFullYear(), now.getMonth(), 1));
+    return { from: start.toISOString(), to: endOfLocalDay(now).toISOString() };
+  }
+  if (periodId === 'year') {
+    const start = startOfLocalDay(new Date(now.getFullYear(), 0, 1));
+    return { from: start.toISOString(), to: endOfLocalDay(now).toISOString() };
+  }
+  return {};
+}
 
 export default function MerchantReceipts() {
   const { restaurantId } = useAuthStore();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [period, setPeriod] = useState('month');
+
+  const queryOpts = useMemo(() => getReceiptQueryForPeriod(period), [period]);
 
   useEffect(() => {
     if (!restaurantId) {
@@ -20,11 +76,11 @@ export default function MerchantReceipts() {
     }
     setLoading(true);
     api
-      .listReceipts(restaurantId)
+      .listReceipts(restaurantId, queryOpts)
       .then(setRows)
       .catch(() => toast.error('Could not load receipts'))
       .finally(() => setLoading(false));
-  }, [restaurantId]);
+  }, [restaurantId, queryOpts]);
 
   useEffect(() => {
     if (!restaurantId || DEMO_MODE || !supabase) return;
@@ -32,7 +88,7 @@ export default function MerchantReceipts() {
     const debouncedReload = () => {
       clearTimeout(t);
       t = setTimeout(() => {
-        api.listReceipts(restaurantId).then(setRows).catch(() => {});
+        api.listReceipts(restaurantId, queryOpts).then(setRows).catch(() => {});
       }, 250);
     };
     const channel = supabase
@@ -47,17 +103,22 @@ export default function MerchantReceipts() {
       clearTimeout(t);
       supabase.removeChannel(channel);
     };
-  }, [restaurantId]);
+  }, [restaurantId, queryOpts]);
+
+  const totalInRange = useMemo(
+    () => rows.reduce((s, r) => s + Number(r.total_amount ?? 0), 0),
+    [rows],
+  );
 
   async function handleExport() {
     if (!restaurantId) return;
     setExporting(true);
     try {
-      const blob = await api.exportReceiptsCsv(restaurantId);
+      const blob = await api.exportReceiptsCsv(restaurantId, queryOpts);
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `himbyte-receipts-${restaurantId.slice(0, 8)}.csv`;
+      a.download = `himbyte-receipts-${restaurantId.slice(0, 8)}-${period}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('CSV downloaded');
@@ -91,7 +152,7 @@ export default function MerchantReceipts() {
         <div>
           <h1 className="text-2xl font-black text-ink">Receipts</h1>
           <p className="text-sm text-muted mt-0.5">
-            Saved bills and payment records — export for reporting.
+            Saved bills and payment records — filter by period and export for reporting.
           </p>
         </div>
         <button
@@ -105,11 +166,35 @@ export default function MerchantReceipts() {
         </button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 mb-5">
+        {PERIOD_OPTIONS.map((p) => (
+          <Button
+            key={p.id}
+            type="button"
+            variant={period === p.id ? 'gold' : 'ghost'}
+            size="sm"
+            className="rounded-2xl"
+            onClick={() => setPeriod(p.id)}
+          >
+            {p.label}
+          </Button>
+        ))}
+      </div>
+
+      {rows.length > 0 && (
+        <Card className="p-4 mb-5 flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-xs font-bold text-muted uppercase tracking-wide">Total in range</p>
+          <p className="text-xl font-black text-ink tabular-nums">{formatNpr(totalInRange)}</p>
+        </Card>
+      )}
+
       {rows.length === 0 ? (
         <Card className="p-10 text-center">
           <FileSpreadsheet size={36} className="mx-auto text-muted mb-3" />
           <p className="text-sm text-muted">
-            No receipts yet. Guests can tap &quot;Save to records&quot; on their digital bill after ordering.
+            {period === 'all'
+              ? 'No receipts yet. Guests can tap "Save to records" on their digital bill after ordering.'
+              : 'No receipts in this period. Try a wider range (e.g. All time) or pick another date range.'}
           </p>
         </Card>
       ) : (

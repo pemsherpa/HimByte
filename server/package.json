@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "fix:demo-auth": "node scripts/reset-demo-auth.mjs"
+    "fix:demo-auth": "node scripts/reset-demo-auth.mjs",
+    "migrate": "node scripts/apply-pending-migrations.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",

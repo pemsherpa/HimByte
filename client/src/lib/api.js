@@ -10,8 +10,13 @@ async function request(path, options = {}) {
     if (!res.ok) throw new Error('Request failed');
     return null;
   }
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(res.status === 401 ? 'Session expired — sign in again.' : `${res.status} ${res.statusText || 'Request failed'}`);
+  }
+  if (!res.ok) throw new Error(data?.error || data?.message || 'Request failed');
   return data;
 }
 
@@ -74,7 +79,11 @@ export const api = {
   // ── Table Bills ─────────────────────────────
   getTableBills: (restaurantId) => request(`/tables/${restaurantId}/bills`),
   getTableBill: (tableRoomId) => request(`/tables/${tableRoomId}/bill`),
-  settleTable: (tableRoomId) => request(`/tables/${tableRoomId}/settle`, { method: 'POST' }),
+  settleTable: (tableRoomId, body = {}) =>
+    request(`/tables/${tableRoomId}/settle`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   transferOrders: (fromTableId, payload) =>
     request(`/tables/${fromTableId}/transfer`, { method: 'POST', body: JSON.stringify(payload) }),
   splitBill: (tableRoomId, payload) =>
@@ -119,12 +128,25 @@ export const api = {
   // ── Receipts (guest snapshot + staff history) ─────────────────
   /** Persists a VAT receipt for this browser session (no auth). */
   createReceiptFromSession: (body) => publicPost('/receipts/from-session', body),
-  listReceipts: (restaurantId) => request(`/receipts/restaurant/${restaurantId}`),
-  exportReceiptsCsv: async (restaurantId) => {
+  listReceipts: (restaurantId, { from, to } = {}) => {
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    const q = qs.toString();
+    return request(`/receipts/restaurant/${restaurantId}${q ? `?${q}` : ''}`);
+  },
+  exportReceiptsCsv: async (restaurantId, { from, to } = {}) => {
     const token = localStorage.getItem('himbyte_token');
-    const res = await fetch(`${API_BASE}/receipts/restaurant/${restaurantId}/export.csv`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    const q = qs.toString();
+    const res = await fetch(
+      `${API_BASE}/receipts/restaurant/${restaurantId}/export.csv${q ? `?${q}` : ''}`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+    );
     if (!res.ok) {
       let msg = 'Export failed';
       try {

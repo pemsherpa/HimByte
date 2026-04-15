@@ -29,16 +29,25 @@ router.post('/', guestServiceRequestLimiter, async (req, res) => {
     return res.status(e.status || 403).json({ error: e.message, code: e.code });
   }
 
+  /** All in-venue guest taps surface as high priority on Order Gate. */
+  const urgency = 'high';
+
   const row = {
     restaurant_id,
     table_room_id: table_room_id || null,
     service_type,
     status: 'requested',
+    urgency,
   };
   if (notes) row.notes = notes;
   if (session_id) row.session_id = session_id;
 
   let { data, error } = await supabase.from('service_requests').insert(row).select().single();
+
+  if (error && (error.message?.includes('urgency') || error.code === '42703')) {
+    delete row.urgency;
+    ({ data, error } = await supabase.from('service_requests').insert(row).select().single());
+  }
 
   if (error && error.message?.includes('notes')) {
     delete row.notes;

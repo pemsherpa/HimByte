@@ -188,6 +188,60 @@ const orders = [
 /* ── Guest / hotel service requests (in-memory) ─────────── */
 const serviceRequests = [];
 
+const ON_BILL_STATUSES_DEMO = ['approved', 'preparing', 'ready', 'served'];
+
+function demoOrderLineSum(o) {
+  const items = o.order_items || [];
+  if (items.length) {
+    return items.reduce((s, oi) => s + Number(oi.price_at_time) * Number(oi.quantity || 0), 0);
+  }
+  return Number(o.total_price || 0);
+}
+
+function demoComputeRunningTotal(tableRoomId) {
+  return orders
+    .filter((o) => o.table_room_id === tableRoomId && ON_BILL_STATUSES_DEMO.includes(o.status))
+    .reduce((s, o) => s + demoOrderLineSum(o), 0);
+}
+
+function demoBuildLineItemsFromOrders(onBillOrders) {
+  const lines = [];
+  for (const order of onBillOrders || []) {
+    const rows = order.order_items || [];
+    if (rows.length) {
+      for (const oi of rows) {
+        lines.push({
+          order_item_id: oi.id,
+          order_id: order.id,
+          order_status: order.status,
+          menu_item_id: oi.menu_item_id,
+          name: oi.menu_items?.name || 'Item',
+          image_url: oi.menu_items?.image_url,
+          quantity: oi.quantity,
+          price_at_time: oi.price_at_time,
+          line_total: Number(oi.price_at_time) * oi.quantity,
+        });
+      }
+    } else {
+      const tp = Number(order.total_price || 0);
+      if (tp > 0) {
+        lines.push({
+          order_item_id: `order-${order.id}`,
+          order_id: order.id,
+          order_status: order.status,
+          menu_item_id: null,
+          name: 'Order total',
+          image_url: null,
+          quantity: 1,
+          price_at_time: tp,
+          line_total: tp,
+        });
+      }
+    }
+  }
+  return lines;
+}
+
 /* ─── ROUTES ─────────────────────────────────────────────── */
 
 // GET /api/restaurants/:slug
@@ -312,6 +366,7 @@ router.post('/service-requests', guestServiceRequestLimiter, (req, res) => {
     table_room_id: req.body.table_room_id || null,
     service_type: req.body.service_type,
     status: 'requested',
+    urgency: 'high',
     notes: req.body.notes || null,
     session_id: req.body.session_id || null,
     created_at: new Date().toISOString(),
@@ -333,6 +388,98 @@ router.patch('/service-requests/:id/status', (req, res) => {
   if (!r) return res.status(404).json({ error: 'Not found' });
   r.status = req.body.status;
   res.json(r);
+});
+
+// ── Table bills & settle (demo — mirrors production /api/tables/*) ──
+router.get('/tables/:restaurantId/bills', (req, res) => {
+  const rid = req.params.restaurantId;
+  const list = TABLES_ROOMS.filter((t) => t.restaurant_id === rid).map((t) => ({
+    ...t,
+    running_total: demoComputeRunningTotal(t.id),
+  }));
+  res.json(list);
+});
+
+router.get('/tables/:tableRoomId/bill', (req, res) => {
+  const table = TABLES_ROOMS.find((t) => t.id === req.params.tableRoomId);
+  if (!table) return res.status(404).json({ error: 'Table not found' });
+
+  const list = orders
+    .filter((o) => o.table_room_id === table.id && o.status !== 'cancelled')
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
+  const onBillOrders = list.filter((o) => ON_BILL_STATUSES_DEMO.includes(o.status));
+  const pendingOrders = list.filter((o) => o.status === 'pending');
+
+  const items = demoBuildLineItemsFromOrders(onBillOrders);
+  const pending_items = demoBuildLineItemsFromOrders(pendingOrders);
+  const subtotal = items.reduce((s, i) => s + i.line_total, 0);
+  const pending_subtotal = pending_items.reduce((s, i) => s + i.line_total, 0);
+
+  res.json({
+    table: { ...table, running_total: demoComputeRunningTotal(table.id) },
+    orders: list,
+    items,
+    subtotal,
+    pending_items,
+    pending_subtotal,
+    running_total: demoComputeRunningTotal(table.id),
+  });
+});
+
+router.post('/tables/:tableRoomId/settle', (req, res) => {
+  const table = TABLES_ROOMS.find((t) => t.id === req.params.tableRoomId);
+  if (!table) return res.status(404).json({ error: 'Table not found' });
+
+  const settled_total = demoComputeRunningTotal(table.id);
+  const ts = new Date().toISOString();
+
+  for (const o of orders) {
+    if (o.table_room_id !== table.id) continue;
+    if (o.status === 'cancelled') {
+      o.table_room_id = null;
+      o.updated_at = ts;
+    } else {
+      o.status = 'served';
+      o.table_room_id = null;
+      o.updated_at = ts;
+    }
+  }
+
+  const pm = (req.body && req.body.payment_method) || 'cash';
+  res.json({
+    settled_total,
+    table_id: table.id,
+    receipt_id: null,
+    payment_method: pm,
+    message: 'Table settled',
+  });
+});
+
+router.post('/tables/:tableRoomId/transfer', (req, res) => {
+  res.status(501).json({ error: 'Transfer not implemented in demo' });
+});
+
+router.post('/tables/:tableRoomId/split', (req, res) => {
+  const table = TABLES_ROOMS.find((t) => t.id === req.params.tableRoomId);
+  if (!table) return res.status(404).json({ error: 'Table not found' });
+  const total = demoComputeRunningTotal(table.id);
+  const { mode = 'equal', num_ways = 2 } = req.body;
+  if (mode === 'equal') {
+    const n = Math.max(1, Math.floor(num_ways));
+    const perPerson = Math.ceil(total / n);
+    return res.json({
+      mode: 'equal',
+      total,
+      num_ways: n,
+      per_person: perPerson,
+      splits: Array.from({ length: n }, (_, i) => ({
+        label: `Person ${i + 1}`,
+        amount: i < n - 1 ? perPerson : total - perPerson * (n - 1),
+      })),
+    });
+  }
+  res.status(400).json({ error: 'Invalid split mode' });
 });
 
 /* ── Admin ──────────────────────────────────────────────── */

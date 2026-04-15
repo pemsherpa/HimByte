@@ -10,7 +10,8 @@
     "build": "npm run build --prefix client",
     "start": "npm run start --prefix server",
     "fix:demo-auth": "npm run fix:demo-auth --prefix server",
-    "seed": "node seed.js"
+    "seed": "node seed.js",
+    "migrate": "npm run migrate --prefix server"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",

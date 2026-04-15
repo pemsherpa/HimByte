@@ -8,6 +8,14 @@ const router = Router();
 
 const VAT_RATE = 0;
 
+/** Optional ISO date bounds from query: ?from=&to= (inclusive on created_at) */
+function applyReceiptDateFilters(q, req) {
+  const { from, to } = req.query;
+  if (from && typeof from === 'string') q = q.gte('created_at', from);
+  if (to && typeof to === 'string') q = q.lte('created_at', to);
+  return q;
+}
+
 function buildLinesFromOrders(orders) {
   const lines = [];
   for (const o of orders || []) {
@@ -93,12 +101,12 @@ router.post('/from-session', async (req, res) => {
 router.get('/restaurant/:restaurantId/export.csv', requireAuth, requireRestaurant, requireActiveStaffSubscription, async (req, res) => {
   const rid = req.restaurantId;
 
-  const { data, error } = await supabase
+  let q = supabase
     .from('receipts')
     .select('*')
-    .eq('restaurant_id', rid)
-    .order('created_at', { ascending: false })
-    .limit(5000);
+    .eq('restaurant_id', rid);
+  q = applyReceiptDateFilters(q, req);
+  const { data, error } = await q.order('created_at', { ascending: false }).limit(5000);
 
   if (error) return res.status(500).json({ error: error.message });
 
@@ -130,12 +138,9 @@ router.get('/restaurant/:restaurantId/export.csv', requireAuth, requireRestauran
 router.get('/restaurant/:restaurantId', requireAuth, requireRestaurant, requireActiveStaffSubscription, async (req, res) => {
   const rid = req.restaurantId;
 
-  const { data, error } = await supabase
-    .from('receipts')
-    .select('*')
-    .eq('restaurant_id', rid)
-    .order('created_at', { ascending: false })
-    .limit(500);
+  let q = supabase.from('receipts').select('*').eq('restaurant_id', rid);
+  q = applyReceiptDateFilters(q, req);
+  const { data, error } = await q.order('created_at', { ascending: false }).limit(500);
 
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
