@@ -6,8 +6,7 @@ import useAuthStore from '../../stores/authStore';
 import Card from '../../components/ui/Card';
 import toast from 'react-hot-toast';
 import { jsPDF } from 'jspdf';
-
-const APP_URL = import.meta.env.VITE_APP_URL || window.location.origin;
+import { buildQrScanUrl } from '../../lib/publicUrl';
 
 async function svgToPngDataUrl(svgEl, { size = 512, bg = '#ffffff' } = {}) {
   const svgText = new XMLSerializer().serializeToString(svgEl);
@@ -43,7 +42,8 @@ function downloadDataUrl(dataUrl, filename) {
 }
 
 function QRCard({ location, slug, canDelete, onDeleted }) {
-  const qrUrl = location.qr_code_url || `${APP_URL}/scan?r=${slug}&loc=${location.id}`;
+  /** Always derive from public origin — ignore stale `qr_code_url` saved with localhost or old deploys. */
+  const qrUrl = buildQrScanUrl(slug, location.id);
   const ref   = useRef(null);
 
   function handleDownloadSvg() {
@@ -286,7 +286,7 @@ export default function QRCodes() {
   function handlePrintAll() {
     const visible = filtered;
     const rows    = visible.map((loc) => {
-      const url = loc.qr_code_url || `${APP_URL}/scan?r=${restaurant?.slug}&loc=${loc.id}`;
+      const url = buildQrScanUrl(restaurant?.slug || 'venue', loc.id);
       return `
         <div class="card">
           <img src="https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(url)}" width="140" height="140" />

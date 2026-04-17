@@ -23,30 +23,32 @@ This repo serves the **Express API** from Render and the **Vite React app** from
 1. **New** → **Web Service** → connect the repo.
 2. **Root directory:** leave empty (repository root).
 3. **Build command:** `npm install && npm install --prefix server`
-4. **Start command:** `npm start`  
-   (runs `npm run start --prefix server` → `node src/index.js` in `server/`.)
+4. **Start command:** `npm start`
+  (runs `npm run start --prefix server` → `node src/index.js` in `server/`.)
 5. **Instance type:** Free (trial) or **Starter+** for no spin-down.
 
 ### Environment variables (Render → Environment)
 
 Set at least:
 
-| Key | Notes |
-|-----|--------|
-| `NODE_ENV` | `production` |
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Public anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Secret** — server-side operations |
-| `CLIENT_URL` | Comma-separated **origins** of your Cloudflare app, e.g. `https://himbyte.pages.dev,https://app.yourdomain.com` (no trailing slashes). Required for CORS in production. |
-| `APP_URL` | Public URL of the **frontend** (QR codes, links). Same as primary Pages URL unless you use a different marketing domain. |
+
+| Key                         | Notes                                                                                                                                                                   |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                  | `production`                                                                                                                                                            |
+| `SUPABASE_URL`              | Supabase project URL                                                                                                                                                    |
+| `SUPABASE_ANON_KEY`         | Public anon key                                                                                                                                                         |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Secret** — server-side operations                                                                                                                                     |
+| `CLIENT_URL`                | Comma-separated **origins** of your Cloudflare app, e.g. `https://himbyte.pages.dev,https://app.yourdomain.com` (no trailing slashes). Required for CORS in production. |
+| `APP_URL`                   | Public URL of the **frontend** (QR codes, links). Same as primary Pages URL unless you use a different marketing domain.                                                |
+
 
 Optional (if you use them):
 
-- `SMTP_*` — email (demo requests, guest notifications)
-- `ESEWA_*` — eSewa payments
+- `SMTP_`* — email (demo requests, guest notifications)
+- `ESEWA_`* — eSewa payments
 - `SUPABASE_DB_PASSWORD` / `DATABASE_URL` — migrations from CI or local only
 
-**Do not** set `VITE_*` on Render unless you also run a Vite build there — the browser bundle is built on Cloudflare.
+**Do not** set `VITE_`* on Render unless you also run a Vite build there — the browser bundle is built on Cloudflare.
 
 ### Verify
 
@@ -59,23 +61,27 @@ Open `https://<your-service>.onrender.com/api/health` — expect JSON with `stat
 1. In [Cloudflare Dashboard](https://dash.cloudflare.com) → **Workers & Pages** → **Create** → **Pages** → **Connect to Git**.
 2. Select the repo. Configure the build:
 
-| Setting | Value |
-|--------|--------|
-| **Framework preset** | None (or Vite if detected) |
-| **Root directory** | `client` |
-| **Build command** | `npm install && npm run build` |
-| **Build output directory** | `dist` |
 
-3. **Environment variables** (Production and Preview as needed):
+| Setting                    | Value                          |
+| -------------------------- | ------------------------------ |
+| **Framework preset**       | None (or Vite if detected)     |
+| **Root directory**         | `client`                       |
+| **Build command**          | `npm install && npm run build` |
+| **Build output directory** | `dist`                         |
 
-| Variable | Value |
-|----------|--------|
-| `VITE_SUPABASE_URL` | Same as `SUPABASE_URL` |
-| `VITE_SUPABASE_ANON_KEY` | Same as `SUPABASE_ANON_KEY` |
-| `VITE_API_URL` | Render API **origin only**, no path — e.g. `https://himbyte-api.onrender.com` |
-| `VITE_APP_URL` | Optional; defaults to `window.location.origin`. Set to your canonical Pages/custom domain if QR codes must always use that URL. |
 
-4. Save and deploy. After the first deploy, copy the **Pages URL** and add it to Render’s `CLIENT_URL` (and redeploy the API if CORS was blocking).
+1. **Environment variables** (Production and Preview as needed):
+
+
+| Variable                 | Value                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`      | Same as `SUPABASE_URL`                                                                                                          |
+| `VITE_SUPABASE_ANON_KEY` | Same as `SUPABASE_ANON_KEY`                                                                                                     |
+| `VITE_API_URL`           | Render API **origin only**, no path — e.g. `https://himbyte-api.onrender.com`                                                   |
+| `VITE_APP_URL`           | **Recommended:** `https://himbyte.pages.dev` (your canonical Pages URL, no trailing slash). Used for **QR codes** and printed links. If unset, QR URLs use whatever origin the staff browser is on (wrong if you open the dashboard from localhost or a preview URL). |
+
+
+1. Save and deploy. After the first deploy, copy the **Pages URL** and add it to Render’s `CLIENT_URL` (and redeploy the API if CORS was blocking).
 
 ### SPA routing
 
@@ -92,7 +98,7 @@ In Pages → **Custom domains** → add `app.yourdomain.com`. In Render, extend 
 In Supabase → **Authentication** → **URL configuration**:
 
 - **Site URL:** your production frontend URL (e.g. `https://himbyte.pages.dev` or custom domain).
-- **Redirect URLs:** include the same origin(s) plus any preview URLs you use (e.g. `https://*.pages.dev/*` if you enable wildcard patterns — follow Supabase docs for your plan).
+- **Redirect URLs:** include the same origin(s) plus any preview URLs you use (e.g. `https://*.pages.dev/`* if you enable wildcard patterns — follow Supabase docs for your plan).
 
 ---
 
@@ -100,7 +106,7 @@ In Supabase → **Authentication** → **URL configuration**:
 
 1. Deploy **Render** with `CLIENT_URL` temporarily empty or set to a placeholder; confirm `/api/health`.
 2. Deploy **Cloudflare Pages** with `VITE_API_URL` pointing at Render.
-3. Update Render **`CLIENT_URL`** to your real Pages URL(s); redeploy API.
+3. Update Render `**CLIENT_URL`** to your real Pages URL(s); redeploy API.
 4. Update **Supabase** redirect/site URLs.
 5. Smoke-test: login, guest menu with `?r=slug&table=…`, staff dashboard.
 
@@ -108,15 +114,18 @@ In Supabase → **Authentication** → **URL configuration**:
 
 ## 5. Local development (unchanged)
 
-- Root `.env` with `VITE_*` and server vars; leave **`VITE_API_URL` unset** so the client uses `/api` and Vite proxies to `localhost:3001`.
+- Root `.env` with `VITE_`* and server vars; leave `**VITE_API_URL` unset** so the client uses `/api` and Vite proxies to `localhost:3001`.
 
 ---
 
 ## 6. Troubleshooting
 
-| Issue | What to check |
-|-------|----------------|
-| CORS errors in browser | `CLIENT_URL` on Render matches exact frontend origin (scheme + host + port if any). |
-| API calls go to wrong host | `VITE_API_URL` set at **build** time on Pages; rebuild after changing it. |
-| `/api/health` 404 on Render | Start command / root directory; service must listen on `process.env.PORT`. |
-| Auth redirect loops | Supabase Site URL and redirect allowlist. |
+
+| Issue                       | What to check                                                                       |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| CORS errors in browser      | `CLIENT_URL` on Render matches exact frontend origin (scheme + host + port if any). |
+| API calls go to wrong host  | `VITE_API_URL` set at **build** time on Pages; rebuild after changing it.           |
+| `/api/health` 404 on Render | Start command / root directory; service must listen on `process.env.PORT`.          |
+| Auth redirect loops         | Supabase Site URL and redirect allowlist.                                           |
+
+
