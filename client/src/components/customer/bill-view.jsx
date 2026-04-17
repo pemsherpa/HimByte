@@ -269,8 +269,8 @@ export default function BillView({ restaurant, sessionId }) {
                         <div>
                           <p className="text-xs font-semibold text-ink">Pay with eSewa</p>
                           <p className="text-[11px] text-muted mt-0.5 leading-snug">
-                            Pay the amount on the venue register (running total). UAT test wallet: 9806800001–5,
-                            password Nepal@123, code 123456.
+                            Pay the running total shown on your bill. Use your eSewa wallet; for UAT testing, follow
+                            eSewa&apos;s published test wallet steps in their developer docs.
                           </p>
                         </div>
                       </div>

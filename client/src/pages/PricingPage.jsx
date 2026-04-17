@@ -37,12 +37,12 @@ const PLANS = [
 export default function PricingPage() {
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
-      <nav className="relative z-10 max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
-        <Link to="/" className="flex items-center gap-3">
-          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-md" />
-          <span className="text-base font-black text-ink">Himbyte</span>
+      <nav className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <Link to="/" className="flex items-center gap-3 min-w-0 shrink-0">
+          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-md shrink-0" />
+          <span className="text-base font-black text-ink truncate">Himbyte</span>
         </Link>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <Link to="/contact" className="text-sm font-semibold text-body hover:text-primary transition-colors">
             Contact
           </Link>
@@ -57,7 +57,7 @@ export default function PricingPage() {
 
       <div className="relative overflow-hidden flex-1">
         <MandalaBackground opacity={0.05} />
-        <div className="relative z-10 max-w-5xl mx-auto px-6 pt-8 pb-20">
+        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 pt-8 pb-20">
           <div className="inline-flex items-center gap-2 bg-primary-soft text-primary px-4 py-1.5 rounded-full text-xs font-bold mb-6 border border-primary/20">
             <Mountain size={13} />
             Transparent Nepal pricing · NPR

@@ -307,11 +307,12 @@ td{padding:4px 0;font-size:13px;border-bottom:1px dashed #ccc}h2{margin:0 0 4px}
               <Card className="p-4 mb-5 border border-primary/20 bg-primary-soft/25">
                 <p className="text-xs font-bold text-muted uppercase mb-1">Pay at counter (eSewa)</p>
                 <p className="text-[11px] text-body mb-3 leading-relaxed">
-                  Charges the <span className="font-semibold text-ink">running bill total</span> via eSewa ePay v2 (testing portal when UAT is configured).
-                  UAT test login: eSewa ID 9806800001–9806800005, password Nepal@123, verification token 123456 — see{' '}
+                  Charges the <span className="font-semibold text-ink">running bill total</span> via eSewa ePay v2 when UAT or production credentials are configured on the server.
+                  For sandbox testing, use the wallet details from{' '}
                   <a href="https://developer.esewa.com.np/pages/Test-credentials" target="_blank" rel="noreferrer" className="text-primary font-medium underline">
-                    eSewa test credentials
-                  </a>.
+                    eSewa&apos;s official test credentials
+                  </a>{' '}
+                  (do not share secrets in the UI).
                 </p>
                 <button
                   type="button"

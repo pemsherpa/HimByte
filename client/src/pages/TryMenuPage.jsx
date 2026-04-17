@@ -82,19 +82,19 @@ export default function TryMenuPage() {
 
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
-      <nav className="relative z-10 max-w-6xl mx-auto px-6 py-5 flex items-center justify-between w-full">
-        <Link to="/" className="flex items-center gap-3">
-          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-md" />
-          <span className="text-base font-black text-ink">Himbyte</span>
+      <nav className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between w-full">
+        <Link to="/" className="flex items-center gap-3 min-w-0">
+          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-md shrink-0" />
+          <span className="text-base font-black text-ink truncate">Himbyte</span>
         </Link>
-        <Link to="/" className="text-sm font-semibold text-primary hover:underline">
+        <Link to="/" className="text-sm font-semibold text-primary hover:underline shrink-0">
           ← Back to home
         </Link>
       </nav>
 
-      <div className="relative flex-1 overflow-hidden">
+      <div className="relative flex-1 overflow-hidden min-w-0">
         <MandalaBackground opacity={0.05} />
-        <div className="relative z-10 max-w-6xl mx-auto px-6 py-8 md:py-12">
+        <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 md:py-12">
           <div className="text-center mb-10 md:mb-12">
             <div className="inline-flex items-center gap-2 text-sm font-bold text-primary mb-3">
               <Sparkles size={18} aria-hidden />

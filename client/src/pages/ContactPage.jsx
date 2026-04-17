@@ -16,15 +16,15 @@ const WHATSAPP = [
 export default function ContactPage() {
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
-      <nav className="relative z-10 max-w-5xl mx-auto px-6 py-5 flex items-center justify-between w-full">
-        <Link to="/" className="flex items-center gap-3">
-          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-md" />
-          <div>
+      <nav className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between w-full">
+        <Link to="/" className="flex items-center gap-3 min-w-0 shrink-0">
+          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-md shrink-0" />
+          <div className="min-w-0">
             <span className="text-base font-black text-ink">Himbyte</span>
             <span className="hidden sm:inline text-xs text-muted ml-2">Contact</span>
           </div>
         </Link>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link to="/pricing" className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
             Pricing
           </Link>
@@ -39,7 +39,7 @@ export default function ContactPage() {
 
       <div className="relative flex-1 overflow-hidden">
         <MandalaBackground opacity={0.05} />
-        <div className="relative z-10 max-w-5xl mx-auto px-6 py-12 md:py-16">
+        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-12 md:py-16">
           <div className="text-center max-w-2xl mx-auto mb-12">
             <h1 className="text-3xl sm:text-4xl font-black text-ink mb-4">Contact us</h1>
             <p className="text-body leading-relaxed">

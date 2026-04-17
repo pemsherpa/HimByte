@@ -30,12 +30,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4 sm:p-6 safe-area-pb">
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="w-full max-w-sm"
+        className="w-full max-w-sm min-w-0"
       >
         {/* Logo */}
         <div className="text-center mb-8">
@@ -60,8 +60,9 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="admin@tashidelek.np"
+              placeholder="you@yourrestaurant.com"
               required={!DEMO_MODE}
+              autoComplete="email"
               className="w-full px-4 py-3 rounded-xl border border-border bg-canvas text-sm text-ink
                          placeholder-muted focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
             />
@@ -107,37 +108,6 @@ export default function LoginPage() {
               </>
             )}
           </button>
-
-          {/* Credential hints */}
-          <div className="pt-2 border-t border-border">
-            <p className="text-[11px] text-muted text-center mb-2 font-medium">Demo Accounts</p>
-            <div className="space-y-1 text-[11px] text-muted/80">
-              <div className="flex justify-between gap-2 bg-canvas px-3 py-1.5 rounded-lg">
-                <span className="shrink-0 font-semibold text-primary">Super Admin</span>
-                <span className="font-mono text-right text-[10px] leading-tight">
-                  admin@himbyte.app<br />
-                  Himbyte@2026
-                </span>
-              </div>
-              <div className="flex justify-between gap-2 bg-canvas px-3 py-1.5 rounded-lg">
-                <span className="shrink-0">Tashi Delek</span>
-                <span className="font-mono text-right text-[10px] leading-tight">
-                  admin@ / staff@<br />
-                  tashidelek.np or .com
-                </span>
-              </div>
-              <div className="flex justify-between gap-2 bg-canvas px-3 py-1.5 rounded-lg">
-                <span className="shrink-0">Ohana Cafe</span>
-                <span className="font-mono text-right text-[10px] leading-tight">
-                  admin@ / staff@<br />
-                  ohanacafe.np or .com
-                </span>
-              </div>
-              <p className="text-center pt-1 text-[10px]">
-                Passwords: <span className="font-mono">TashiDelek@2026</span> · <span className="font-mono">OhanaCafe@2026</span>
-              </p>
-            </div>
-          </div>
         </form>
 
         <p className="text-center text-xs text-muted mt-6 space-y-2">

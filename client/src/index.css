@@ -48,6 +48,11 @@
 
   html { scroll-behavior: smooth; }
 
+  html {
+    overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     font-family: var(--font-sans);
     background-color: var(--color-canvas);
@@ -55,6 +60,17 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100dvh;
+    min-width: 0;
+  }
+
+  /* iOS safe areas for notched devices */
+  .safe-area-pb {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
   }
 
   h1, h2, h3, h4, h5, h6 { color: var(--color-ink); line-height: 1.25; }

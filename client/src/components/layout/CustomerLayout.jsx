@@ -11,7 +11,7 @@ export default function CustomerLayout({ children, restaurantName, onCartClick }
       <MandalaBackground opacity={0.05} />
 
       <header className="sticky top-0 z-30 glass border-b border-border">
-        <div className="max-w-lg mx-auto flex items-center justify-between px-4 py-3">
+        <div className="max-w-lg mx-auto w-full min-w-0 flex items-center justify-between px-3 sm:px-4 py-3 gap-2">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-primary rounded-xl flex items-center justify-center">
               <span className="text-white font-black text-sm">H</span>
@@ -37,7 +37,7 @@ export default function CustomerLayout({ children, restaurantName, onCartClick }
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto relative z-10">{children}</main>
+      <main className="max-w-lg mx-auto relative z-10 w-full min-w-0 px-3 sm:px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">{children}</main>
     </div>
   );
 }

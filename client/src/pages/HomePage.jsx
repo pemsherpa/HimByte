@@ -69,15 +69,15 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-canvas flex flex-col">
       {/* Nav */}
-      <nav className="relative z-10 max-w-5xl mx-auto px-6 py-5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-md" />
-          <div>
+      <nav className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3 min-w-0">
+          <img src="/assets/himbyte-logo.png" alt="Himbyte" className="w-9 h-9 rounded-xl object-cover shadow-md shrink-0" />
+          <div className="min-w-0">
             <span className="text-base font-black text-ink">Himbyte</span>
             <span className="hidden sm:inline text-xs text-muted ml-2">Nepal&apos;s Restaurant OS</span>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:gap-2 justify-start sm:justify-end">
           <Link to="/contact" className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
             Contact
           </Link>
@@ -99,7 +99,7 @@ export default function HomePage() {
       {/* Hero */}
       <div className="relative overflow-hidden">
         <MandalaBackground opacity={0.05} />
-        <div className="relative z-10 max-w-5xl mx-auto px-6 pt-14 pb-20 text-center">
+        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-16 sm:pb-20 text-center">
           <div className="inline-flex items-center gap-2 bg-primary-soft text-primary px-4 py-1.5 rounded-full text-xs font-bold mb-7 border border-primary/20">
             <Mountain size={13} />
             Built for Nepal&apos;s Hospitality Industry · 2026
@@ -129,7 +129,7 @@ export default function HomePage() {
       </div>
 
       {/* Features */}
-      <div className="max-w-5xl mx-auto px-6 pb-10">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 pb-10">
         <div className="text-center mb-10">
           <h2 className="text-2xl sm:text-3xl font-black text-ink mb-2">Built on modern tech</h2>
           <p className="text-sm text-muted max-w-2xl mx-auto">
@@ -170,7 +170,7 @@ export default function HomePage() {
 
       {/* Trusted by — marquee */}
       <section className="py-12 border-y border-border bg-surface/80 overflow-hidden">
-        <div className="max-w-5xl mx-auto px-6 mb-6 text-center">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 mb-6 text-center">
           <p className="text-xs font-bold uppercase tracking-widest text-muted">Trusted by teams across Nepal</p>
         </div>
         <div className="relative w-full overflow-hidden">
@@ -191,7 +191,7 @@ export default function HomePage() {
       </section>
 
       {/* Testimonials */}
-      <section className="max-w-5xl mx-auto px-6 py-16">
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <div className="text-center mb-12">
           <h2 className="text-2xl sm:text-3xl font-black text-ink mb-2">What operators say</h2>
           <p className="text-sm text-muted">Real workflows from venues piloting smarter service.</p>

@@ -57,11 +57,11 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4 sm:p-6">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md"
+        className="w-full max-w-md min-w-0"
       >
         <div className="text-center mb-6">
           <div className="w-14 h-14 bg-gold rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-lg">

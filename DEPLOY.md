@@ -73,11 +73,11 @@ Open `https://<your-service>.onrender.com/api/health` — expect JSON with `stat
 1. **Environment variables** (Production and Preview as needed):
 
 
-| Variable                 | Value                                                                                                                           |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `VITE_SUPABASE_URL`      | Same as `SUPABASE_URL`                                                                                                          |
-| `VITE_SUPABASE_ANON_KEY` | Same as `SUPABASE_ANON_KEY`                                                                                                     |
-| `VITE_API_URL`           | Render API **origin only**, no path — e.g. `https://himbyte-api.onrender.com`                                                   |
+| Variable                 | Value                                                                                                                                                                                                                                                                                              |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VITE_SUPABASE_URL`      | Same as `SUPABASE_URL`                                                                                                                                                                                                                                                                             |
+| `VITE_SUPABASE_ANON_KEY` | Same as `SUPABASE_ANON_KEY`                                                                                                                                                                                                                                                                        |
+| `VITE_API_URL`           | Render API **origin only**, no path — e.g. `https://himbyte-api.onrender.com`                                                                                                                                                                                                                      |
 | `VITE_APP_URL`           | **Recommended:** `https://himbyte.pages.dev` (full URL, no trailing slash). Used for **QR codes**. **Do not** enter `window.location.origin` — that is not valid; the literal text becomes the hostname and breaks scans (NXDOMAIN). If unset or invalid, the app uses the current browser origin. |
 
 

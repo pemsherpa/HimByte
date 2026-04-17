@@ -140,7 +140,7 @@ export default function DashboardLayout({ variant = 'merchant' }) {
           <span className="text-sm font-bold text-ink">Himbyte</span>
         </header>
 
-        <main className="flex-1 p-5 lg:p-8">
+        <main className="flex-1 p-4 sm:p-5 lg:p-8 min-w-0 max-w-full">
           <Outlet />
         </main>
       </div>
