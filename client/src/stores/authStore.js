@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { API_BASE } from '../lib/api';
 import { supabase, DEMO_MODE } from '../lib/supabase';
 import { DEMO_RESTAURANT_ID } from '../lib/constants';
 
@@ -61,7 +62,7 @@ const useAuthStore = create((set, get) => ({
 
     if (!DEMO_MODE) {
       try {
-        const res = await fetch('/api/me', {
+        const res = await fetch(`${API_BASE}/me`, {
           headers: {
             Authorization: `Bearer ${session.access_token}`,
             'Content-Type': 'application/json',

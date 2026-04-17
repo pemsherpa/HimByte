@@ -5,6 +5,7 @@ import morgan from 'morgan';
 
 import { DEMO_MODE, getSupabaseEnvStatus, SUPABASE_URL, supabase } from './supabaseClient.js';
 import { requireAuth } from './middleware/auth.js';
+import demoRequestRouter from './routes/demo-request.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -53,6 +54,8 @@ app.get('/api/health', (req, res) => {
         },
   });
 });
+
+app.use('/api', demoRequestRouter);
 
 if (DEMO_MODE) {
   const { default: demoRouter } = await import('./routes/demo.js');

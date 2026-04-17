@@ -1,0 +1,18 @@
+# Render Blueprint — Web Service for the Himbyte Express API.
+# Dashboard: New → Blueprint → connect repo, or paste this file.
+# Set all secrets in Render → Environment (not committed here).
+
+services:
+  - type: web
+    name: himbyte-api
+    runtime: node
+    region: oregon
+    # Use `starter` or higher for always-on (free tier spins down after idle).
+    plan: free
+    rootDir: .
+    buildCommand: npm install && npm install --prefix server
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production

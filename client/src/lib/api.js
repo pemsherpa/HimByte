@@ -1,4 +1,6 @@
-const API_BASE = '/api';
+/** In production (Cloudflare Pages), set VITE_API_URL to the Render API origin, e.g. https://himbyte-api.onrender.com */
+const API_ORIGIN = String(import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '');
+export const API_BASE = API_ORIGIN ? `${API_ORIGIN}/api` : '/api';
 
 async function request(path, options = {}) {
   const token = localStorage.getItem('himbyte_token');
@@ -44,6 +46,9 @@ export const api = {
 
   // ── Onboarding (public) ───────────────────────
   registerRestaurantOwner: (body) => publicPost('/onboarding/register-owner', body),
+
+  /** Lead form: emails Pema & Kashchit (requires SMTP on server). */
+  submitDemoRequest: (body) => publicPost('/demo-request', body),
 
   // ── Restaurant ──────────────────────────────
   getRestaurant: (slug) => request(`/restaurants/${slug}`),

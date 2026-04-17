@@ -7,6 +7,11 @@ import { DEMO_MODE } from './lib/supabase';
 
 import HomePage      from './pages/HomePage';
 import PricingPage   from './pages/PricingPage';
+import ContactPage   from './pages/ContactPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsOfServicePage from './pages/TermsOfServicePage';
+import CookiePolicyPage from './pages/CookiePolicyPage';
+import TryMenuPage from './pages/TryMenuPage';
 import LoginPage     from './pages/LoginPage';
 import RegisterPage  from './pages/RegisterPage';
 import QRLanding     from './pages/customer/QRLanding';
@@ -103,6 +108,11 @@ export default function App() {
         <Route path="/login"  element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/contact" element={<ContactPage />} />
+        <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms" element={<TermsOfServicePage />} />
+        <Route path="/cookies" element={<CookiePolicyPage />} />
+        <Route path="/try-menu" element={<TryMenuPage />} />
         <Route path="/scan"   element={<QRLanding />} />
         <Route path="/menu/:slug"   element={<MenuPage />} />
         <Route path="/menu"   element={<MenuPage />} />

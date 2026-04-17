@@ -61,3 +61,78 @@ export async function sendGuestEmail({ to, subject, text, html }) {
   return { ok: true };
 }
 
+const DEFAULT_DEMO_REQUEST_RECIPIENTS = 'ptssherpa5@gmail.com,thapakashchitbikram@gmail.com';
+
+/**
+ * Notify Pema & Kashchit when someone requests a live demo from the marketing site.
+ */
+export async function sendDemoRequestNotification(payload) {
+  if (!isEmailConfigured()) return { ok: false, skipped: true, reason: 'smtp_not_configured' };
+
+  const raw = String(process.env.DEMO_REQUEST_TO || DEFAULT_DEMO_REQUEST_RECIPIENTS).trim();
+  const to = raw.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
+  if (to.length === 0) return { ok: false, skipped: true, reason: 'no_recipients' };
+
+  const from = String(process.env.SMTP_FROM || '').trim();
+  const transporter = getTransport();
+
+  const {
+    restaurant_name,
+    owner_name,
+    owner_email,
+    country_code,
+    mobile,
+    city,
+    address,
+  } = payload;
+
+  const subject = `[Himbyte] Demo request — ${restaurant_name}`;
+  const text = [
+    'New demo request from the Himbyte website',
+    '',
+    `Restaurant: ${restaurant_name}`,
+    `Owner: ${owner_name}`,
+    `Email: ${owner_email}`,
+    `Mobile: ${country_code} ${mobile}`,
+    `City: ${city || '—'}`,
+    `Address: ${address || '—'}`,
+    '',
+    'Reply to the owner email above to schedule the demo.',
+  ].join('\n');
+
+  const html = `
+    <h2 style="font-family:system-ui,sans-serif;">New demo request</h2>
+    <table style="font-family:system-ui,sans-serif;font-size:14px;border-collapse:collapse;">
+      <tr><td style="padding:6px 12px 6px 0;color:#64748B;">Restaurant</td><td><strong>${escapeHtml(restaurant_name)}</strong></td></tr>
+      <tr><td style="padding:6px 12px 6px 0;color:#64748B;">Owner</td><td>${escapeHtml(owner_name)}</td></tr>
+      <tr><td style="padding:6px 12px 6px 0;color:#64748B;">Email</td><td><a href="mailto:${escapeHtml(owner_email)}">${escapeHtml(owner_email)}</a></td></tr>
+      <tr><td style="padding:6px 12px 6px 0;color:#64748B;">Mobile</td><td>${escapeHtml(country_code)} ${escapeHtml(mobile)}</td></tr>
+      <tr><td style="padding:6px 12px 6px 0;color:#64748B;">City</td><td>${escapeHtml(city || '—')}</td></tr>
+      <tr><td style="padding:6px 12px 6px 0;color:#64748B;vertical-align:top;">Address</td><td>${escapeHtml(address || '—').replace(/\n/g, '<br/>')}</td></tr>
+    </table>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from,
+      to,
+      replyTo: owner_email,
+      subject,
+      text,
+      html,
+    });
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+
+  return { ok: true };
+}
+
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
