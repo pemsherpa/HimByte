@@ -78,7 +78,7 @@ Open `https://<your-service>.onrender.com/api/health` — expect JSON with `stat
 | `VITE_SUPABASE_URL`      | Same as `SUPABASE_URL`                                                                                                          |
 | `VITE_SUPABASE_ANON_KEY` | Same as `SUPABASE_ANON_KEY`                                                                                                     |
 | `VITE_API_URL`           | Render API **origin only**, no path — e.g. `https://himbyte-api.onrender.com`                                                   |
-| `VITE_APP_URL`           | **Recommended:** `https://himbyte.pages.dev` (your canonical Pages URL, no trailing slash). Used for **QR codes** and printed links. If unset, QR URLs use whatever origin the staff browser is on (wrong if you open the dashboard from localhost or a preview URL). |
+| `VITE_APP_URL`           | **Recommended:** `https://himbyte.pages.dev` (full URL, no trailing slash). Used for **QR codes**. **Do not** enter `window.location.origin` — that is not valid; the literal text becomes the hostname and breaks scans (NXDOMAIN). If unset or invalid, the app uses the current browser origin. |
 
 
 1. Save and deploy. After the first deploy, copy the **Pages URL** and add it to Render’s `CLIENT_URL` (and redeploy the API if CORS was blocking).
