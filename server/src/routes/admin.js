@@ -6,6 +6,7 @@ import { attachCategoryNames } from '../lib/menuItemCategoryNames.js';
 import { provisionRestaurantOwner } from '../lib/onboardingProvision.js';
 import { decryptRegistrationSecret } from '../lib/registrationEncryption.js';
 import { sendGuestEmail, venueRegistrationRejectedContent } from '../lib/mailer.js';
+import hqPlatformRoutes from './hq-platform.js';
 
 const router = Router();
 
@@ -664,5 +665,7 @@ router.post('/venue-registrations/:id/reject', requireAuth, requireRole('super_a
 
   res.json({ ok: true, message: 'Request rejected; applicant was emailed.' });
 });
+
+router.use(hqPlatformRoutes);
 
 export default router;

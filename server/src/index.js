@@ -92,6 +92,8 @@ if (DEMO_MODE) {
   const { default: billingRoutes } = await import('./routes/billing.js');
   const { default: paymentsEsewaRoutes } = await import('./routes/payments-esewa.js');
   const { default: ownerOpsRoutes } = await import('./routes/owner-ops.js');
+  const { default: supportTicketsRoutes } = await import('./routes/support-tickets.js');
+  const { default: venueNotificationsRoutes } = await import('./routes/venue-notifications.js');
   app.use('/api/restaurants', restaurantRoutes);
   app.use('/api/menu', menuRoutes);
   app.use('/api/orders', orderRoutes);
@@ -103,6 +105,8 @@ if (DEMO_MODE) {
   app.use('/api/billing', billingRoutes);
   app.use('/api/payments', paymentsEsewaRoutes);
   app.use('/api', ownerOpsRoutes);
+  app.use('/api/support', supportTicketsRoutes);
+  app.use('/api/venue-notifications', venueNotificationsRoutes);
   console.log(`✓  Supabase connected → ${SUPABASE_URL}`);
 }
 

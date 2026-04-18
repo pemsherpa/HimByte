@@ -1061,4 +1061,176 @@ router.post('/restaurants/:restaurantId/tables_rooms', (req, res) => {
   res.status(201).json(row);
 });
 
+/* ── HQ / support / notifications (demo stubs; in-memory) ─── */
+const demoSupportTickets = [];
+const demoSupportMessages = [];
+
+router.get('/support/tickets', (req, res) => {
+  res.json(demoSupportTickets.filter((t) => t.restaurant_id === RESTAURANT_ID));
+});
+
+router.post('/support/tickets', (req, res) => {
+  const subject = String(req.body?.subject || '').trim();
+  const message = String(req.body?.message || '').trim();
+  if (!subject || !message) return res.status(400).json({ error: 'subject and message required' });
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const ticket = {
+    id,
+    restaurant_id: RESTAURANT_ID,
+    subject,
+    status: 'awaiting_hq',
+    created_at: now,
+    updated_at: now,
+    resolved_at: null,
+  };
+  demoSupportTickets.unshift(ticket);
+  demoSupportMessages.push({ id: crypto.randomUUID(), ticket_id: id, is_hq_reply: false, body: message, created_at: now });
+  res.status(201).json(ticket);
+});
+
+router.get('/support/tickets/:ticketId', (req, res) => {
+  const t = demoSupportTickets.find((x) => x.id === req.params.ticketId);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  const messages = demoSupportMessages.filter((m) => m.ticket_id === t.id);
+  res.json({ ticket: t, messages });
+});
+
+router.post('/support/tickets/:ticketId/messages', (req, res) => {
+  const t = demoSupportTickets.find((x) => x.id === req.params.ticketId);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  const body = String(req.body?.body || '').trim();
+  if (!body) return res.status(400).json({ error: 'body required' });
+  const now = new Date().toISOString();
+  const row = { id: crypto.randomUUID(), ticket_id: t.id, is_hq_reply: false, body, created_at: now };
+  demoSupportMessages.push(row);
+  t.updated_at = now;
+  t.status = 'awaiting_hq';
+  res.status(201).json(row);
+});
+
+router.get('/venue-notifications', (req, res) => {
+  res.json({ items: [], popup: null });
+});
+
+router.post('/venue-notifications/:broadcastId/dismiss-popup', (req, res) => {
+  res.json({ ok: true });
+});
+
+router.post('/venue-notifications/:broadcastId/read', (req, res) => {
+  res.json({ ok: true });
+});
+
+router.get('/admin/restaurants/:id/detail', (req, res) => {
+  if (req.params.id !== RESTAURANT_ID) return res.status(404).json({ error: 'Not found' });
+  const orderRows = orders.filter((o) => o.restaurant_id === RESTAURANT_ID);
+  const revenue = orderRows.filter((o) => o.status !== 'cancelled').reduce((s, o) => s + Number(o.total_price || 0), 0);
+  res.json({
+    restaurant: { ...RESTAURANT },
+    owner: { full_name: 'Demo Owner', role: 'restaurant_admin', email: 'owner@demo.np' },
+    profiles: [],
+    staff_count: 2,
+    table_count: TABLES_ROOMS.length,
+    total_orders: orderRows.length,
+    order_revenue: revenue,
+    receipt_count: null,
+    receipt_total: null,
+  });
+});
+
+router.get('/admin/platform-orders', (req, res) => {
+  const list = orders.map((o) => ({
+    ...o,
+    restaurants: { name: RESTAURANT.name, slug: RESTAURANT.slug },
+    tables_rooms: TABLES_ROOMS.find((t) => t.id === o.table_room_id) || { identifier: '—', type: 'table' },
+  }));
+  res.json(list.slice(0, 80));
+});
+
+router.get('/admin/analytics-insights', (req, res) => {
+  const orderRows = orders.filter((o) => o.restaurant_id === RESTAURANT_ID);
+  const revenue = orderRows.filter((o) => o.status !== 'cancelled').reduce((s, o) => s + Number(o.total_price || 0), 0);
+  res.json({
+    tenants: 1,
+    top_by_revenue: [
+      {
+        restaurant_id: RESTAURANT_ID,
+        name: RESTAURANT.name,
+        slug: RESTAURANT.slug,
+        order_count: orderRows.length,
+        revenue,
+        table_count: TABLES_ROOMS.length,
+        staff_count: 2,
+        is_active: true,
+        subscription_status: 'trial',
+        subscription_plan: 'starter',
+      },
+    ],
+    top_by_orders: [],
+    top_by_tables: [],
+    lowest_by_revenue: [],
+    lowest_by_orders: [],
+  });
+});
+
+router.get('/admin/billing-summary', (req, res) => {
+  res.json({
+    restaurant_count: 1,
+    subscription_breakdown: { trial: 1 },
+    trials_ending_next_7_days: 0,
+    receipt_line_count: 0,
+    receipt_total_amount: 0,
+    platform_order_revenue_ex_cancelled: orders
+      .filter((o) => o.status !== 'cancelled')
+      .reduce((s, o) => s + Number(o.total_price || 0), 0),
+    note: 'Demo data — connect Supabase for live billing metrics.',
+  });
+});
+
+router.get('/admin/support-tickets', (req, res) => {
+  res.json(demoSupportTickets.map((t) => ({ ...t, restaurants: { name: RESTAURANT.name, slug: RESTAURANT.slug } })));
+});
+
+router.get('/admin/support-tickets/:ticketId', (req, res) => {
+  const t = demoSupportTickets.find((x) => x.id === req.params.ticketId);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  const messages = demoSupportMessages.filter((m) => m.ticket_id === t.id);
+  res.json({ ticket: { ...t, restaurants: { name: RESTAURANT.name, slug: RESTAURANT.slug } }, messages });
+});
+
+router.post('/admin/support-tickets/:ticketId/messages', (req, res) => {
+  const t = demoSupportTickets.find((x) => x.id === req.params.ticketId);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  const body = String(req.body?.body || '').trim();
+  if (!body) return res.status(400).json({ error: 'body required' });
+  const now = new Date().toISOString();
+  const row = { id: crypto.randomUUID(), ticket_id: t.id, is_hq_reply: true, body, created_at: now };
+  demoSupportMessages.push(row);
+  t.updated_at = now;
+  t.status = 'open';
+  res.status(201).json(row);
+});
+
+router.patch('/admin/support-tickets/:ticketId', (req, res) => {
+  const t = demoSupportTickets.find((x) => x.id === req.params.ticketId);
+  if (!t) return res.status(404).json({ error: 'Not found' });
+  t.status = req.body?.status || t.status;
+  t.updated_at = new Date().toISOString();
+  res.json(t);
+});
+
+router.get('/admin/broadcasts', (req, res) => {
+  res.json([]);
+});
+
+router.post('/admin/broadcasts', (req, res) => {
+  res.status(201).json({
+    id: crypto.randomUUID(),
+    title: String(req.body?.title || 'Notice'),
+    body: String(req.body?.body || ''),
+    target_scope: 'all',
+    created_at: new Date().toISOString(),
+  });
+});
+
 export default router;

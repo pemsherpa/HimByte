@@ -177,6 +177,46 @@ export const api = {
   rejectVenueRegistration: (id) =>
     request(`/admin/venue-registrations/${id}/reject`, { method: 'POST' }),
 
+  // ── Super Admin: HQ (tenants, orders, analytics, billing, support, broadcasts) ──
+  getAdminRestaurantDetail: (id) => request(`/admin/restaurants/${id}/detail`),
+  getAdminPlatformOrders: (params = {}) => {
+    const qs = new URLSearchParams();
+    if (params.restaurant_id) qs.set('restaurant_id', params.restaurant_id);
+    if (params.status) qs.set('status', params.status);
+    if (params.limit) qs.set('limit', String(params.limit));
+    if (params.offset) qs.set('offset', String(params.offset));
+    const q = qs.toString();
+    return request(`/admin/platform-orders${q ? `?${q}` : ''}`);
+  },
+  getAdminAnalyticsInsights: () => request('/admin/analytics-insights'),
+  getAdminBillingSummary: () => request('/admin/billing-summary'),
+  listSupportTicketsAdmin: (status) =>
+    request(`/admin/support-tickets${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  getSupportTicketAdmin: (id) => request(`/admin/support-tickets/${id}`),
+  replySupportTicketAdmin: (id, body) =>
+    request(`/admin/support-tickets/${id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body }),
+    }),
+  patchSupportTicketAdmin: (id, patch) =>
+    request(`/admin/support-tickets/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  listHqBroadcasts: () => request('/admin/broadcasts'),
+  createHqBroadcast: (body) =>
+    request('/admin/broadcasts', { method: 'POST', body: JSON.stringify(body) }),
+
+  // ── Venue: Himbyte support & HQ notifications ───────────────
+  listVenueSupportTickets: () => request('/support/tickets'),
+  createVenueSupportTicket: (body) =>
+    request('/support/tickets', { method: 'POST', body: JSON.stringify(body) }),
+  getVenueSupportTicket: (id) => request(`/support/tickets/${id}`),
+  replyVenueSupportTicket: (id, body) =>
+    request(`/support/tickets/${id}/messages`, { method: 'POST', body: JSON.stringify({ body }) }),
+  getVenueNotifications: () => request('/venue-notifications'),
+  dismissVenueNotificationPopup: (broadcastId) =>
+    request(`/venue-notifications/${broadcastId}/dismiss-popup`, { method: 'POST' }),
+  markVenueNotificationRead: (broadcastId) =>
+    request(`/venue-notifications/${broadcastId}/read`, { method: 'POST' }),
+
   // ── Owner: vendors & payables ─────────────────────────────────
   listVendors: (restaurantId) => request(`/owner/${restaurantId}/vendors`),
   createVendor: (restaurantId, body) =>

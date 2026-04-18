@@ -38,6 +38,14 @@ import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminRestaurants from './pages/admin/AdminRestaurants';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
 import AdminVenueRequests from './pages/admin/AdminVenueRequests';
+import AdminRestaurantDetail from './pages/admin/AdminRestaurantDetail';
+import AdminSupportInbox from './pages/admin/AdminSupportInbox';
+import AdminOrdersControl from './pages/admin/AdminOrdersControl';
+import AdminBilling from './pages/admin/AdminBilling';
+import AdminBroadcasts from './pages/admin/AdminBroadcasts';
+import AdminPlatformInsights from './pages/admin/AdminPlatformInsights';
+import MerchantSupport from './pages/merchant/MerchantSupport';
+import MerchantHqNotifications from './pages/merchant/MerchantHqNotifications';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuthStore();
@@ -139,6 +147,8 @@ export default function App() {
           <Route path="inventory"   element={<Inventory />} />
           <Route path="bills"       element={<TableBills />} />
           <Route path="guest-requests" element={<GuestRequests />} />
+          <Route path="support" element={<MerchantSupport />} />
+          <Route path="notifications" element={<MerchantHqNotifications />} />
           <Route path="receipts"    element={<MerchantReceipts />} />
           <Route path="analytics"   element={<OwnerOnly><Analytics /></OwnerOnly>} />
           <Route path="tables"      element={<OwnerOnly><QRCodes /></OwnerOnly>} />
@@ -160,7 +170,13 @@ export default function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="venue-requests" element={<AdminVenueRequests />} />
           <Route path="restaurants" element={<AdminRestaurants />} />
+          <Route path="restaurants/:id" element={<AdminRestaurantDetail />} />
+          <Route path="insights" element={<AdminPlatformInsights />} />
           <Route path="analytics" element={<AdminAnalytics />} />
+          <Route path="orders" element={<AdminOrdersControl />} />
+          <Route path="support" element={<AdminSupportInbox />} />
+          <Route path="billing" element={<AdminBilling />} />
+          <Route path="broadcasts" element={<AdminBroadcasts />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

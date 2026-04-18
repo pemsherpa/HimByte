@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, ChefHat, Package,
   BarChart3, Menu, X, LogOut, Building2, QrCode, Receipt, FileSpreadsheet, Bell, Truck, Users, UserPlus,
+  LifeBuoy, Inbox, LineChart, Radio,
 } from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
 import { DEMO_MODE } from '../../lib/supabase';
+import HqBroadcastModal from '../venue/HqBroadcastModal';
 
 const ownerNav = [
   { to: '/merchant',           icon: LayoutDashboard, label: 'Dashboard', end: true },
@@ -14,6 +16,8 @@ const ownerNav = [
   { to: '/merchant/kitchen',   icon: ChefHat,         label: 'Kitchen KDS' },
   { to: '/merchant/bills',     icon: Receipt,         label: 'Table Bills' },
   { to: '/merchant/guest-requests', icon: Bell,      label: 'Guest requests' },
+  { to: '/merchant/support',       icon: LifeBuoy,   label: 'Support' },
+  { to: '/merchant/notifications',   icon: Inbox,      label: 'From Himbyte' },
   { to: '/merchant/receipts',  icon: FileSpreadsheet, label: 'Receipts & VAT' },
   { to: '/merchant/inventory', icon: Package,         label: 'Menu & stock' },
   { to: '/merchant/analytics', icon: BarChart3,       label: 'Analytics'   },
@@ -27,6 +31,8 @@ const staffNav = [
   { to: '/merchant/kitchen',   icon: ChefHat,         label: 'Kitchen KDS' },
   { to: '/merchant/bills',     icon: Receipt,         label: 'Table Bills' },
   { to: '/merchant/guest-requests', icon: Bell,      label: 'Guest requests' },
+  { to: '/merchant/support',       icon: LifeBuoy,   label: 'Support' },
+  { to: '/merchant/notifications',   icon: Inbox,      label: 'From Himbyte' },
   { to: '/merchant/receipts',  icon: FileSpreadsheet, label: 'Receipts & VAT' },
   { to: '/merchant/inventory', icon: Package,         label: 'Menu & stock' },
 ];
@@ -35,7 +41,12 @@ const adminNav = [
   { to: '/admin',               icon: LayoutDashboard, label: 'Dashboard',       end: true },
   { to: '/admin/venue-requests', icon: UserPlus,       label: 'Venue applications' },
   { to: '/admin/restaurants',   icon: Building2,       label: 'Restaurants'     },
+  { to: '/admin/insights',      icon: LineChart,       label: 'Insights'         },
   { to: '/admin/analytics',     icon: BarChart3,       label: 'Analytics'        },
+  { to: '/admin/orders',      icon: ClipboardList,   label: 'Order control'    },
+  { to: '/admin/support',     icon: LifeBuoy,        label: 'Support inbox'    },
+  { to: '/admin/billing',     icon: Receipt,         label: 'Billing'          },
+  { to: '/admin/broadcasts',  icon: Radio,           label: 'Broadcasts'       },
 ];
 
 function SidebarContent({ nav, title, onClose, profile, onSignOut }) {
@@ -90,7 +101,6 @@ function SidebarContent({ nav, title, onClose, profile, onSignOut }) {
 export default function DashboardLayout({ variant = 'merchant' }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { profile, signOut } = useAuthStore();
-  const navigate = useNavigate();
 
   let nav, title;
   if (variant === 'admin') {
@@ -142,6 +152,7 @@ export default function DashboardLayout({ variant = 'merchant' }) {
         </header>
 
         <main className="flex-1 p-4 sm:p-5 lg:p-8 min-w-0 max-w-full">
+          {variant === 'merchant' && <HqBroadcastModal />}
           <Outlet />
         </main>
       </div>

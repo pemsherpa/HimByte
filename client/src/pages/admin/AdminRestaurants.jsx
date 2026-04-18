@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Building2, MapPin, Hash, Loader2, Settings2, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Building2, MapPin, Hash, Loader2, Settings2, Trash2, ChevronRight } from 'lucide-react';
 import { api } from '../../lib/api';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
@@ -150,10 +151,18 @@ export default function AdminRestaurants() {
                   <span className="text-sm font-bold text-ink">{r.order_count_today ?? 0}</span>
                 </div>
 
+                <Link
+                  to={`/admin/restaurants/${r.id}`}
+                  className="mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-primary/25 bg-primary-soft/40 text-xs font-bold text-primary hover:bg-primary-soft transition-colors"
+                >
+                  Tenant profile & metrics
+                  <ChevronRight size={14} />
+                </Link>
+
                 <button
                   type="button"
                   onClick={() => openEdit(r)}
-                  className="mt-3 w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-border text-xs font-bold text-ink hover:bg-canvas-dark transition-colors"
+                  className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-border text-xs font-bold text-ink hover:bg-canvas-dark transition-colors"
                 >
                   <Settings2 size={14} className="text-primary" />
                   Subscription
