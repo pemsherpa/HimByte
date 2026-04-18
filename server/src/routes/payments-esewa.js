@@ -4,7 +4,6 @@ import { getClient, supabase, DEMO_MODE } from '../supabaseClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireActiveStaffSubscription } from '../middleware/subscription.js';
 import { signEsewaRequest, verifyEsewaResponseSignature } from '../lib/esewa.js';
-import { sendGuestEmail } from '../lib/mailer.js';
 
 const router = Router();
 
@@ -659,28 +658,7 @@ router.post('/esewa/guest/verify', async (req, res) => {
     last_payment_ref: body.transaction_code || uuid,
   });
 
-  // Email receipt if we have guest email for this session/table.
-  try {
-    const { data: guestOrder } = await supabase
-      .from('orders')
-      .select('guest_email')
-      .eq('restaurant_id', pending.restaurantId)
-      .eq('session_id', pending.sessionId)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const to = guestOrder?.guest_email ? String(guestOrder.guest_email).trim() : '';
-    if (to) {
-      sendGuestEmail({
-        to,
-        subject: 'Himbyte — Payment received (bill)',
-        text: `Payment received. Reference: ${body.transaction_code || uuid}\n\nThank you.`,
-        html: `<p>Payment received.</p><p><b>Reference:</b> ${body.transaction_code || uuid}</p><p>Thank you.</p>`,
-      }).catch(() => {});
-    }
-  } catch {
-    // ignore
-  }
+  // Guest emails: order placed + order ready only (see orders routes). Payment proof lives in-app / receipt export.
 
   pendingByTransactionUuid.delete(uuid);
 

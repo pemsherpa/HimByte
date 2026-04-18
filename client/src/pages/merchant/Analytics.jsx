@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { BarChart2, TrendingUp, Clock, Users, PieChart } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { BarChart2, TrendingUp, Clock, Users, PieChart, FileSpreadsheet } from 'lucide-react';
 import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
 import Card from '../../components/ui/Card';
@@ -193,7 +194,7 @@ export default function Analytics() {
             Showing <span className="font-semibold text-ink">{periodLabel}</span> for KPIs and trends · Today&apos;s hourly
             volume is local to the current calendar day
           </p>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
             {[
               { label: 'Orders', value: data.total_orders, icon: BarChart2, color: 'bg-primary-soft text-primary' },
               {
@@ -218,6 +219,29 @@ export default function Analytics() {
               </Card>
             ))}
           </div>
+
+          <Card className="mb-6 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-primary/20 bg-primary-soft/20">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary text-white flex items-center justify-center shrink-0">
+                <FileSpreadsheet size={18} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-ink">Receipts &amp; analytics (synced)</p>
+                <p className="text-xs text-muted mt-0.5 leading-relaxed">
+                  <span className="font-semibold text-ink tabular-nums">Rs. {Number(data.receipts_total ?? 0).toLocaleString()}</span>
+                  {' '}from <span className="font-medium text-ink">{data.receipts_count ?? 0}</span> VAT slips in this period — matches{' '}
+                  <Link to="/merchant/receipts" className="text-primary font-semibold hover:underline">Receipts &amp; VAT</Link>.
+                  Order revenue above counts all order lines; receipt totals reflect saved tax slips (may differ until guests/staff finalize bills).
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/merchant/receipts"
+              className="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary-dark transition-colors"
+            >
+              Open receipts
+            </Link>
+          </Card>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
             <Card>

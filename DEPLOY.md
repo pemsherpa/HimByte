@@ -127,5 +127,3 @@ In Supabase → **Authentication** → **URL configuration**:
 | API calls go to wrong host  | `VITE_API_URL` set at **build** time on Pages; rebuild after changing it.           |
 | `/api/health` 404 on Render | Start command / root directory; service must listen on `process.env.PORT`.          |
 | Auth redirect loops         | Supabase Site URL and redirect allowlist.                                           |
-
-

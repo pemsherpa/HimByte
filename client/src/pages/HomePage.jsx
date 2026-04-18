@@ -77,20 +77,20 @@ export default function HomePage() {
             <span className="hidden sm:inline text-xs text-muted ml-2">Nepal&apos;s Restaurant OS</span>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-1 gap-y-2 sm:gap-2 justify-start sm:justify-end">
-          <Link to="/contact" className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
+        <div className="w-full sm:w-auto grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-1 sm:justify-end">
+          <Link to="/contact" className="text-center sm:text-left text-xs sm:text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-2 sm:py-1.5 rounded-xl sm:rounded-none bg-surface sm:bg-transparent border border-border/80 sm:border-0">
             Contact
           </Link>
-          <Link to="/pricing" className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
+          <Link to="/pricing" className="text-center sm:text-left text-xs sm:text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-2 sm:py-1.5 rounded-xl sm:rounded-none bg-surface sm:bg-transparent border border-border/80 sm:border-0">
             Pricing
           </Link>
-          <Link to="/register" className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
+          <Link to="/register" className="text-center sm:text-left text-xs sm:text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-2 sm:py-1.5 rounded-xl sm:rounded-none bg-surface sm:bg-transparent border border-border/80 sm:border-0">
             List your venue
           </Link>
-          <Link to={DEMO_MODE ? '/merchant' : '/login'} className="text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-1.5">
+          <Link to={DEMO_MODE ? '/merchant' : '/login'} className="text-center sm:text-left text-xs sm:text-sm font-semibold text-body hover:text-primary transition-colors px-3 py-2 sm:py-1.5 rounded-xl sm:rounded-none bg-surface sm:bg-transparent border border-border/80 sm:border-0">
             Staff Login
           </Link>
-          <Link to="/admin" className="bg-primary text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-primary-dark transition-colors shadow-sm">
+          <Link to="/admin" className="col-span-2 sm:col-span-1 text-center bg-primary text-white text-xs sm:text-sm font-bold px-4 py-2.5 rounded-xl hover:bg-primary-dark transition-colors shadow-sm">
             Admin
           </Link>
         </div>
@@ -99,29 +99,31 @@ export default function HomePage() {
       {/* Hero */}
       <div className="relative overflow-hidden">
         <MandalaBackground opacity={0.05} />
-        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 pt-10 sm:pt-14 pb-16 sm:pb-20 text-center">
-          <div className="inline-flex items-center gap-2 bg-primary-soft text-primary px-4 py-1.5 rounded-full text-xs font-bold mb-7 border border-primary/20">
-            <Mountain size={13} />
-            Built for Nepal&apos;s Hospitality Industry · 2026
+        <div className="relative z-10 max-w-5xl mx-auto px-4 sm:px-6 pt-8 sm:pt-14 pb-14 sm:pb-20 text-center">
+          <div className="inline-flex items-center gap-2 bg-primary-soft text-primary px-3 sm:px-4 py-1.5 rounded-full text-[10px] sm:text-xs font-bold mb-5 sm:mb-7 border border-primary/20 max-w-[95vw]">
+            <Mountain size={13} className="shrink-0" />
+            <span className="leading-tight">Built for Nepal&apos;s hospitality · 2026</span>
           </div>
 
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-ink leading-[1.1] tracking-tight mb-6">
-            The Smarter Way to Run<br />
-            <span className="text-primary">Restaurants</span> &{' '}
-            <span className="text-gold-dark">Hotels</span> in Nepal
+          <h1 className="text-[1.65rem] leading-[1.15] min-[480px]:text-3xl sm:text-5xl lg:text-6xl font-black text-ink tracking-tight mb-4 sm:mb-6">
+            The Smarter Way to Run<br className="hidden min-[480px]:block" />
+            <span className="text-primary"> Restaurants</span>
+            {' & '}
+            <span className="text-gold-dark">Hotels</span>
+            <span className="text-ink"> in Nepal</span>
           </h1>
 
-          <p className="text-base sm:text-lg text-body max-w-xl mx-auto leading-relaxed mb-10">
-            QR-based digital menus, staff-controlled order approvals, live kitchen display, and hotel concierge — all in one platform designed for the Nepali market.
+          <p className="text-sm sm:text-lg text-body max-w-xl mx-auto leading-relaxed mb-8 sm:mb-10 px-0.5">
+            QR menus, staff approval before the kitchen, live boards, and hotel concierge — one platform for Nepali venues.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex flex-col min-[480px]:flex-row items-stretch min-[480px]:items-center justify-center gap-2.5 sm:gap-3 max-w-md min-[480px]:max-w-none mx-auto">
             <Link to="/try-menu"
-              className="inline-flex items-center gap-2.5 bg-primary text-white font-bold px-7 py-3.5 rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary-dark transition-colors text-sm">
+              className="inline-flex items-center justify-center gap-2.5 bg-primary text-white font-bold px-6 sm:px-7 py-3.5 rounded-2xl shadow-lg shadow-primary/20 hover:bg-primary-dark transition-colors text-sm w-full min-[480px]:w-auto">
               <QrCode size={18} /> Try menu
             </Link>
             <Link to="/contact"
-              className="inline-flex items-center gap-2.5 bg-surface text-ink font-bold px-7 py-3.5 rounded-2xl border border-border hover:border-primary/30 transition-colors text-sm">
+              className="inline-flex items-center justify-center gap-2.5 bg-surface text-ink font-bold px-6 sm:px-7 py-3.5 rounded-2xl border border-border hover:border-primary/30 transition-colors text-sm w-full min-[480px]:w-auto">
               Contact us <ArrowRight size={16} />
             </Link>
           </div>

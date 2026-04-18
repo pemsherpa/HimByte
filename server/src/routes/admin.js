@@ -148,6 +148,26 @@ router.get('/analytics', requireAuth, requireRole('super_admin'), async (req, re
     count: todayOrders.filter((o) => new Date(o.created_at).getHours() === h).length,
   }));
 
+  let receipts_today_count = 0;
+  let receipts_today_total = 0;
+  let receipts_all_count = 0;
+  let receipts_all_total = 0;
+  try {
+    const { data: rAll } = await supabase.from('receipts').select('total_amount');
+    if (rAll) {
+      receipts_all_count = rAll.length;
+      receipts_all_total = rAll.reduce((s, r) => s + Number(r.total_amount || 0), 0);
+    }
+    const { data: rToday } = await supabase
+      .from('receipts')
+      .select('total_amount')
+      .gte('created_at', startUtc.toISOString());
+    if (rToday) {
+      receipts_today_count = rToday.length;
+      receipts_today_total = rToday.reduce((s, r) => s + Number(r.total_amount || 0), 0);
+    }
+  } catch { /* optional table */ }
+
   res.json({
     total_restaurants: restaurantsRes.count || 0,
     total_orders: orders.length,
@@ -158,6 +178,10 @@ router.get('/analytics', requireAuth, requireRole('super_admin'), async (req, re
     completion_rate: orders.length ? ((served.length / orders.length) * 100).toFixed(1) : '0',
     popular_items: popular_items.length ? popular_items : [{ name: '—', orders: 0 }],
     hourly_orders,
+    receipts_all_count,
+    receipts_all_total,
+    receipts_today_count,
+    receipts_today_total,
   });
 });
 
@@ -476,6 +500,32 @@ router.get('/restaurant-analytics/:restaurantId', requireAuth, async (req, res) 
     count: orders_by_status[status] || 0,
   }));
 
+  /** VAT receipts (stored snapshots) — same period as KPIs; pairs with Receipts & VAT page. */
+  let receipts_count = 0;
+  let receipts_total = 0;
+  let receipts_today_count = 0;
+  let receipts_today_total = 0;
+  try {
+    let rQ = supabase.from('receipts').select('total_amount, created_at').eq('restaurant_id', rid);
+    if (periodStart) rQ = rQ.gte('created_at', periodStart.toISOString());
+    const { data: recPeriod, error: e1 } = await rQ;
+    if (!e1 && recPeriod) {
+      receipts_count = recPeriod.length;
+      receipts_total = recPeriod.reduce((s, r) => s + Number(r.total_amount || 0), 0);
+    }
+    const { data: recTodayRows, error: e2 } = await supabase
+      .from('receipts')
+      .select('total_amount')
+      .eq('restaurant_id', rid)
+      .gte('created_at', startUtc.toISOString());
+    if (!e2 && recTodayRows) {
+      receipts_today_count = recTodayRows.length;
+      receipts_today_total = recTodayRows.reduce((s, r) => s + Number(r.total_amount || 0), 0);
+    }
+  } catch {
+    /* receipts table optional */
+  }
+
   res.json({
     period,
     total_orders: countPeriod,
@@ -489,6 +539,10 @@ router.get('/restaurant-analytics/:restaurantId', requireAuth, async (req, res) 
     popular_items,
     hourly_orders,
     revenue_by_day,
+    receipts_count,
+    receipts_total,
+    receipts_today_count,
+    receipts_today_total,
   });
 });
 

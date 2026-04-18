@@ -76,9 +76,16 @@ export function useGuestRequestsInbox(restaurantId) {
   }, [restaurantId, load]);
 
   useEffect(() => {
-    if (!restaurantId || !DEMO_MODE) return;
-    const id = setInterval(() => load().catch(() => {}), 3500);
-    return () => clearInterval(id);
+    if (!restaurantId) return;
+    const id = window.setInterval(() => load().catch(() => {}), DEMO_MODE ? 3500 : 8000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') load().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, [restaurantId, load]);
 
   return { items, loading, reload: load };

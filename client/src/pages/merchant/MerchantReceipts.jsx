@@ -91,7 +91,7 @@ export default function MerchantReceipts() {
         api.listReceipts(restaurantId, queryOpts).then(setRows).catch(() => {});
       }, 250);
     };
-    const channel = supabase
+    const chReceipts = supabase
       .channel(`receipts-sync:${restaurantId}`)
       .on(
         'postgres_changes',
@@ -99,9 +99,18 @@ export default function MerchantReceipts() {
         debouncedReload,
       )
       .subscribe();
+    const chOrders = supabase
+      .channel(`receipts-orders-sync:${restaurantId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` },
+        debouncedReload,
+      )
+      .subscribe();
     return () => {
       clearTimeout(t);
-      supabase.removeChannel(channel);
+      supabase.removeChannel(chReceipts);
+      supabase.removeChannel(chOrders);
     };
   }, [restaurantId, queryOpts]);
 

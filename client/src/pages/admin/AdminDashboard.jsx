@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Building2, Receipt, TrendingUp, Users, CheckCircle, BarChart2, Settings2, Trash2 } from 'lucide-react';
+import { Building2, Receipt, TrendingUp, CheckCircle, BarChart2, Settings2, FileSpreadsheet } from 'lucide-react';
 import { api } from '../../lib/api';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
@@ -69,35 +69,35 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard label="Restaurants"     value={analytics?.total_restaurants ?? '—'} icon={Building2}    color="bg-primary-soft text-primary"    delay={0.00} />
-        <StatCard label="Orders Today"    value={analytics?.orders_today ?? '—'}      icon={Receipt}      color="bg-gold-soft text-gold-dark"     delay={0.07} />
-        <StatCard label="Revenue Today"   value={analytics ? `Rs. ${analytics.revenue_today.toLocaleString()}` : '—'} sub="Across all restaurants"
-          icon={TrendingUp}   color="bg-success-soft text-success"   delay={0.14} />
-        <StatCard label="Completion Rate" value={analytics ? `${analytics.completion_rate}%` : '—'} sub={`${analytics?.total_orders ?? 0} total orders`}
-          icon={CheckCircle}  color="bg-blue-50 text-blue-600"       delay={0.21} />
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-6">
+        <StatCard label="Restaurants" value={analytics?.total_restaurants ?? '—'} icon={Building2} color="bg-primary-soft text-primary" delay={0} />
+        <StatCard label="Orders today" value={analytics?.orders_today ?? '—'} icon={Receipt} color="bg-gold-soft text-gold-dark" delay={0.05} />
+        <StatCard label="Revenue today" value={analytics ? `Rs. ${analytics.revenue_today.toLocaleString()}` : '—'} sub="All tenants" icon={TrendingUp} color="bg-success-soft text-success" delay={0.1} />
+        <StatCard label="VAT slips today" value={analytics?.receipts_today_count ?? '—'} sub={analytics ? `Rs. ${Number(analytics.receipts_today_total || 0).toLocaleString()}` : ''} icon={FileSpreadsheet} color="bg-primary-soft text-primary" delay={0.12} />
+        <StatCard label="Receipts total" value={analytics?.receipts_all_count ?? '—'} sub={analytics ? `Rs. ${Number(analytics.receipts_all_total || 0).toLocaleString()} cum.` : ''} icon={FileSpreadsheet} color="bg-gold-soft text-gold-dark" delay={0.15} />
+        <StatCard label="Completion" value={analytics ? `${analytics.completion_rate}%` : '—'} sub={`${analytics?.total_orders ?? 0} orders`} icon={CheckCircle} color="bg-blue-50 text-blue-600" delay={0.18} />
       </div>
 
       <div className="mb-5">
         <Card className="p-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-bold text-muted uppercase tracking-wide">Quick actions</p>
-            <p className="text-sm text-body mt-1">Manage tenant subscriptions and lifecycle.</p>
+            <p className="text-xs font-bold text-muted uppercase tracking-wide">Platform</p>
+            <p className="text-sm text-body mt-1">Subscriptions, tenants, and cross-venue metrics. Deactivate tenants from the restaurants list.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link
+              to="/admin/analytics"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-surface text-sm font-bold text-ink hover:border-primary/40 transition-colors"
+            >
+              <BarChart2 size={16} />
+              Platform analytics
+            </Link>
             <Link
               to="/admin/restaurants"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary-dark transition-colors"
             >
               <Settings2 size={16} />
               Manage restaurants
-            </Link>
-            <Link
-              to="/admin/restaurants"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-danger/25 bg-danger-soft/40 text-danger text-sm font-bold hover:bg-danger-soft transition-colors"
-            >
-              <Trash2 size={16} />
-              Delete tenant
             </Link>
           </div>
         </Card>

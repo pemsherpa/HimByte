@@ -38,6 +38,7 @@ function playNotificationChime() {
 export default function MerchantDashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [recentOrders, setRecentOrders] = useState([]);
+  const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const [openGuestRequests, setOpenGuestRequests] = useState(null);
   const { restaurantId, profile } = useAuthStore();
   const location = useLocation();
@@ -49,9 +50,11 @@ export default function MerchantDashboard() {
     const load = () => Promise.all([
       api.getRestaurantAnalytics(restaurantId).catch(() => null),
       api.getRestaurantOrders(restaurantId).catch(() => []),
-    ]).then(([a, orders]) => {
+      api.getRestaurantOrders(restaurantId, 'pending').catch(() => []),
+    ]).then(([a, orders, pending]) => {
       if (cancelled) return;
       setAnalytics(a);
+      setPendingApprovalCount((pending || []).length);
       const list = orders || [];
       list.sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
       setRecentOrders(list.slice(0, 5));
@@ -87,6 +90,9 @@ export default function MerchantDashboard() {
                 list.sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
                 setRecentOrders(list.slice(0, 5));
               })
+              .catch(() => {});
+            api.getRestaurantOrders(restaurantId, 'pending')
+              .then((p) => setPendingApprovalCount((p || []).length))
               .catch(() => {});
           });
         },
@@ -159,6 +165,34 @@ export default function MerchantDashboard() {
             </Card>
           </motion.div>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+        <Link
+          to="/merchant/orders"
+          className={`rounded-2xl border p-4 flex items-center justify-between gap-3 transition-colors ${pendingApprovalCount > 0 ? 'border-gold bg-gold-soft/40 shadow-sm' : 'border-border bg-surface hover:border-primary/25'}`}
+        >
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted">Order gate</p>
+            <p className="text-lg font-black text-ink">
+              {pendingApprovalCount} <span className="text-sm font-semibold text-body">awaiting approval</span>
+            </p>
+          </div>
+          <ArrowRight className="text-primary shrink-0" size={18} />
+        </Link>
+        <Link
+          to="/merchant/receipts"
+          className="rounded-2xl border border-border bg-surface p-4 flex items-center justify-between gap-3 hover:border-primary/25 transition-colors"
+        >
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted">Receipts (VAT) · today</p>
+            <p className="text-lg font-black text-ink tabular-nums">
+              Rs. {Number(analytics?.receipts_today_total ?? 0).toLocaleString()}
+              <span className="text-xs font-medium text-muted ml-2">{analytics?.receipts_today_count ?? 0} slips</span>
+            </p>
+          </div>
+          <ArrowRight className="text-primary shrink-0" size={18} />
+        </Link>
       </div>
 
       <Link to="/merchant/guest-requests" className="block mb-6">

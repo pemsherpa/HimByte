@@ -40,6 +40,7 @@ export function useStaffOrdersBootstrap(restaurantId) {
     };
   }, [restaurantId, fetchOrders]);
 
+  /** Realtime (requires Supabase RLS + replication on `orders`); polling covers demo mode and any Realtime gaps. */
   useEffect(() => {
     if (!restaurantId || DEMO_MODE || !supabase) return;
     let t;
@@ -67,6 +68,22 @@ export function useStaffOrdersBootstrap(restaurantId) {
     return () => {
       clearTimeout(t);
       supabase.removeChannel(channel);
+    };
+  }, [restaurantId, fetchOrders]);
+
+  /** Poll so Order Gate / KDS update without refresh (demo + production; fixes missing Realtime). */
+  useEffect(() => {
+    if (!restaurantId) return;
+    const id = window.setInterval(() => {
+      fetchOrders().catch(() => {});
+    }, 5000);
+    const onVis = () => {
+      if (document.visibilityState === 'visible') fetchOrders().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, [restaurantId, fetchOrders]);
 

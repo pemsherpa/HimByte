@@ -7,7 +7,7 @@ export default function CustomerLayout({ children, restaurantName, onCartClick }
   const itemCount = useCartStore((s) => s.getItemCount());
 
   return (
-    <div className="min-h-screen bg-canvas relative">
+    <div className="customer-touch min-h-screen bg-canvas relative min-w-0 touch-manipulation">
       <MandalaBackground opacity={0.05} />
 
       <header className="sticky top-0 z-30 glass border-b border-border">
