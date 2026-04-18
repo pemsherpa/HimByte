@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ClipboardList, ChefHat, Package,
-  BarChart3, Menu, X, LogOut, Building2, QrCode, Receipt, FileSpreadsheet, Bell, Truck, Users,
+  BarChart3, Menu, X, LogOut, Building2, QrCode, Receipt, FileSpreadsheet, Bell, Truck, Users, UserPlus,
 } from 'lucide-react';
 import useAuthStore from '../../stores/authStore';
 import { DEMO_MODE } from '../../lib/supabase';
@@ -32,9 +32,10 @@ const staffNav = [
 ];
 
 const adminNav = [
-  { to: '/admin',              icon: LayoutDashboard, label: 'Dashboard',    end: true },
-  { to: '/admin/restaurants',  icon: Building2,       label: 'Restaurants'  },
-  { to: '/admin/analytics',    icon: BarChart3,       label: 'Analytics'    },
+  { to: '/admin',               icon: LayoutDashboard, label: 'Dashboard',       end: true },
+  { to: '/admin/venue-requests', icon: UserPlus,       label: 'Venue applications' },
+  { to: '/admin/restaurants',   icon: Building2,       label: 'Restaurants'     },
+  { to: '/admin/analytics',     icon: BarChart3,       label: 'Analytics'        },
 ];
 
 function SidebarContent({ nav, title, onClose, profile, onSignOut }) {

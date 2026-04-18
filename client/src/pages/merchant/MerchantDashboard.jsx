@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { ClipboardList, TrendingUp, Clock, CheckCircle, ArrowRight, Bell } from 'lucide-react';
+import {
+  ClipboardList, TrendingUp, Clock, CheckCircle, ArrowRight, Bell,
+  Building2, Phone, MapPin, Receipt, BadgeCheck,
+} from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { api } from '../../lib/api';
 import useAuthStore from '../../stores/authStore';
@@ -40,6 +43,7 @@ export default function MerchantDashboard() {
   const [recentOrders, setRecentOrders] = useState([]);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   const [openGuestRequests, setOpenGuestRequests] = useState(null);
+  const [venue, setVenue] = useState(null);
   const { restaurantId, profile } = useAuthStore();
   const location = useLocation();
 
@@ -63,6 +67,17 @@ export default function MerchantDashboard() {
     load();
     return () => { cancelled = true; };
   }, [restaurantId, location.pathname, location.key]);
+
+  useEffect(() => {
+    if (!restaurantId || DEMO_MODE) {
+      setVenue(null);
+      return;
+    }
+    api
+      .getRestaurantById(restaurantId)
+      .then(setVenue)
+      .catch(() => setVenue(null));
+  }, [restaurantId]);
 
   // Realtime: keep dashboard fresh + play chime on new incoming orders
   useEffect(() => {
@@ -147,6 +162,68 @@ export default function MerchantDashboard() {
           {' — '}today&apos;s overview
         </p>
       </div>
+
+      {venue && (
+        <Card className="p-5 mb-6 border-primary/15 bg-primary-soft/20">
+          <h2 className="text-sm font-bold text-ink mb-4 flex items-center gap-2">
+            <Building2 size={18} className="text-primary" />
+            Your venue
+            <span className="text-xs font-medium text-muted normal-case">
+              ({venue.venue_type === 'hotel' ? 'Hotel / lodge' : 'Restaurant'})
+            </span>
+          </h2>
+          <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+            <div>
+              <dt className="text-[10px] font-bold uppercase tracking-wide text-muted mb-0.5">Registered name</dt>
+              <dd className="font-semibold text-ink">{venue.name}</dd>
+            </div>
+            <div>
+              <dt className="text-[10px] font-bold uppercase tracking-wide text-muted mb-0.5">Public slug</dt>
+              <dd className="font-mono text-body text-sm">/menu/{venue.slug}</dd>
+            </div>
+            <div className="flex items-start gap-2">
+              <Phone size={15} className="text-muted shrink-0 mt-0.5" />
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted mb-0.5">Phone</dt>
+                <dd className="text-ink">{venue.phone || '—'}</dd>
+              </div>
+            </div>
+            <div className="sm:col-span-2 flex items-start gap-2">
+              <MapPin size={15} className="text-muted shrink-0 mt-0.5" />
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted mb-0.5">Address</dt>
+                <dd className="text-body whitespace-pre-wrap">{venue.address || '—'}</dd>
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Receipt size={15} className="text-muted shrink-0 mt-0.5" />
+              <div>
+                <dt className="text-[10px] font-bold uppercase tracking-wide text-muted mb-0.5">VAT / PAN</dt>
+                <dd className="font-mono text-ink">{venue.vat_pan_number || '—'}</dd>
+              </div>
+            </div>
+            {(venue.subscription_status || venue.subscription_plan) && (
+              <div className="flex items-start gap-2 lg:col-span-3">
+                <BadgeCheck size={15} className="text-muted shrink-0 mt-0.5" />
+                <div>
+                  <dt className="text-[10px] font-bold uppercase tracking-wide text-muted mb-0.5">Subscription</dt>
+                  <dd className="text-body">
+                    <span className="font-semibold text-ink capitalize">{venue.subscription_status || '—'}</span>
+                    {venue.subscription_plan && (
+                      <span className="text-muted"> · Plan: {venue.subscription_plan}</span>
+                    )}
+                    {venue.trial_ends_at && (
+                      <span className="block text-xs text-muted mt-0.5">
+                        Trial / renewal reference: {new Date(venue.trial_ends_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              </div>
+            )}
+          </dl>
+        </Card>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

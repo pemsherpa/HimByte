@@ -170,6 +170,13 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  getVenueRegistrations: (status = 'pending') =>
+    request(`/admin/venue-registrations?status=${encodeURIComponent(status)}`),
+  approveVenueRegistration: (id) =>
+    request(`/admin/venue-registrations/${id}/approve`, { method: 'POST' }),
+  rejectVenueRegistration: (id) =>
+    request(`/admin/venue-registrations/${id}/reject`, { method: 'POST' }),
+
   // ── Owner: vendors & payables ─────────────────────────────────
   listVendors: (restaurantId) => request(`/owner/${restaurantId}/vendors`),
   createVendor: (restaurantId, body) =>

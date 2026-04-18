@@ -67,49 +67,85 @@ function guestEmailShell(title, innerHtml) {
 </html>`;
 }
 
-/** Notify guest: order received (pending staff approval). */
-export function guestOrderPlacedContent({ orderId, total, currencyLabel = 'Rs.' }) {
-  const sub = `Order ${String(orderId).slice(0, 8)}…`;
-  const text = [
-    'Your order has been received.',
-    '',
-    `Reference: ${orderId}`,
-    `Amount: ${currencyLabel} ${Number(total || 0).toLocaleString('en-NP')}`,
-    '',
-    'The kitchen will start preparing after the venue confirms your order. You can keep this page open for live updates.',
-  ].join('\n');
-  const html = guestEmailShell('Order received', `
-    <p style="margin:0 0 12px 0;">Thank you for ordering with us.</p>
-    <p style="margin:0 0 12px 0;">We have received your order and it is <strong>waiting for staff confirmation</strong>.</p>
-    <table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0;">
-      <tr><td style="padding:8px 0;color:#64748B;">Reference</td><td style="padding:8px 0;text-align:right;font-family:ui-monospace,monospace;">${escapeHtml(orderId)}</td></tr>
-      <tr><td style="padding:8px 0;color:#64748B;">Amount</td><td style="padding:8px 0;text-align:right;font-weight:700;">${escapeHtml(currencyLabel)} ${escapeHtml(Number(total || 0).toLocaleString('en-NP'))}</td></tr>
-    </table>
-    <p style="margin:0;">You will receive another email when your order is <strong>ready for pickup or service</strong>.</p>
-  `);
-  return { subject: `${sub} — received`, text, html };
+function orderEmailSubjectLine(venueName, orderNumber, suffix) {
+  const v = String(venueName || 'Venue').trim() || 'Venue';
+  const n = orderNumber != null ? String(orderNumber) : '—';
+  const base = `${v}: Order ${n}`;
+  return suffix ? `${base} ${suffix}` : base;
 }
 
-/** Notify guest: order ready. */
-export function guestOrderReadyContent({ orderId, total, currencyLabel = 'Rs.' }) {
-  const sub = `Order ${String(orderId).slice(0, 8)}…`;
+/** Guest: staff approved the order (kitchen will proceed). */
+export function guestOrderApprovedContent({
+  venueName,
+  orderNumber,
+  total,
+  currencyLabel = 'Rs.',
+}) {
+  const subj = orderEmailSubjectLine(venueName, orderNumber, '');
   const text = [
-    'Your order is ready.',
+    `Your order is confirmed at ${venueName || 'the venue'}.`,
     '',
-    `Reference: ${orderId}`,
+    `Order number: ${orderNumber}`,
+    `Amount: ${currencyLabel} ${Number(total || 0).toLocaleString('en-NP')}`,
+    '',
+    'The kitchen will prepare your order. We will email you again when it is ready.',
+  ].join('\n');
+  const html = guestEmailShell('Order confirmed', `
+    <p style="margin:0 0 12px 0;">Your order at <strong>${escapeHtml(venueName || 'the venue')}</strong> has been <strong>approved</strong> by the team.</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0;">
+      <tr><td style="padding:8px 0;color:#64748B;">Order</td><td style="padding:8px 0;text-align:right;font-weight:700;">#${escapeHtml(String(orderNumber))}</td></tr>
+      <tr><td style="padding:8px 0;color:#64748B;">Amount</td><td style="padding:8px 0;text-align:right;font-weight:700;">${escapeHtml(currencyLabel)} ${escapeHtml(Number(total || 0).toLocaleString('en-NP'))}</td></tr>
+    </table>
+    <p style="margin:0;">You will receive one more email when your order is <strong>ready</strong>.</p>
+  `);
+  return { subject: subj, text, html };
+}
+
+/** Guest: order ready for pickup / service. */
+export function guestOrderReadyContent({
+  venueName,
+  orderNumber,
+  total,
+  currencyLabel = 'Rs.',
+}) {
+  const subj = orderEmailSubjectLine(venueName, orderNumber, '— ready');
+  const text = [
+    `Your order is ready at ${venueName || 'the venue'}.`,
+    '',
+    `Order number: ${orderNumber}`,
     `Amount: ${currencyLabel} ${Number(total || 0).toLocaleString('en-NP')}`,
     '',
     'Please collect it from the staff or wait for service as arranged by the venue.',
   ].join('\n');
   const html = guestEmailShell('Order ready', `
-    <p style="margin:0 0 12px 0;">Great news — your order is <strong>ready</strong>.</p>
+    <p style="margin:0 0 12px 0;">Great news — order <strong>#${escapeHtml(String(orderNumber))}</strong> at <strong>${escapeHtml(venueName || 'the venue')}</strong> is <strong>ready</strong>.</p>
     <table style="width:100%;border-collapse:collapse;font-size:13px;margin:16px 0;">
-      <tr><td style="padding:8px 0;color:#64748B;">Reference</td><td style="padding:8px 0;text-align:right;font-family:ui-monospace,monospace;">${escapeHtml(orderId)}</td></tr>
       <tr><td style="padding:8px 0;color:#64748B;">Amount</td><td style="padding:8px 0;text-align:right;font-weight:700;">${escapeHtml(currencyLabel)} ${escapeHtml(Number(total || 0).toLocaleString('en-NP'))}</td></tr>
     </table>
     <p style="margin:0;">Please follow the venue&apos;s instructions for pickup or in-room service.</p>
   `);
-  return { subject: `${sub} — ready`, text, html };
+  return { subject: subj, text, html };
+}
+
+/** Applicant: venue listing request denied (super admin). */
+export function venueRegistrationRejectedContent({ ownerName, email }) {
+  const subject = 'Your Himbyte venue request was not approved';
+  const text = [
+    `Hi ${ownerName || 'there'},`,
+    '',
+    'Thank you for your interest in Himbyte. Unfortunately, we are unable to approve your request to join the platform at this time.',
+    '',
+    'If you believe this was a mistake or you would like to discuss next steps, please contact us through the website — we are happy to help.',
+    '',
+    `This message was sent regarding the application for ${email}.`,
+  ].join('\n');
+  const html = guestEmailShell('Request update', `
+    <p style="margin:0 0 12px 0;">Hi ${escapeHtml(ownerName || 'there')},</p>
+    <p style="margin:0 0 12px 0;">Thank you for your interest in Himbyte. Unfortunately, we are unable to approve your request to join the platform at this time.</p>
+    <p style="margin:0 0 12px 0;">If you believe this was a mistake or you would like to discuss next steps, please <strong>contact us</strong> through the website — we are happy to help.</p>
+    <p style="margin:0;font-size:12px;color:#64748B;">Application email: ${escapeHtml(email)}</p>
+  `);
+  return { subject, text, html };
 }
 
 export async function sendGuestEmail({ to, subject, text, html }) {

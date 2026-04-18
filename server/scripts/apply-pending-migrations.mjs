@@ -13,7 +13,8 @@ import pg from 'pg';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(__dirname, '..', '..');
-dotenv.config({ path: path.join(root, '.env') });
+const envPath = path.join(root, '.env');
+dotenv.config({ path: envPath });
 
 function projectRefFromSupabaseUrl(supabaseUrl) {
   try {
@@ -57,28 +58,46 @@ if (!url) {
   console.error('  1) DATABASE_URL — copy the Session pooler URI from Supabase → Connect → Session mode (recommended).');
   console.error('  2) SUPABASE_DB_PASSWORD + SUPABASE_URL + SUPABASE_DB_REGION (e.g. ap-south-1, us-east-1 — see Project Settings → General → Region).');
   console.error('  3) Optional: SUPABASE_USE_DIRECT_DB=true with password + SUPABASE_URL for direct db.<ref>.supabase.co (IPv6; often fails on IPv4-only DNS).\n');
+  console.error(`[migrate] Loaded env from: ${envPath}`);
+  console.error('[migrate] If variables are set elsewhere, add them to that file or export them in this shell.\n');
   process.exit(1);
 }
 
-const files = [
-  'supabase/migrations/014_service_request_urgency.sql',
-  'supabase/migrations/015_employee_shifts_if_missing.sql',
-  'supabase/migrations/016_orders_and_order_items_staff_rls.sql',
-];
+const migDir = path.join(root, 'supabase', 'migrations');
+/** Incremental migrations safe to run on an existing DB (excludes 000–013 full/bootstrap files). */
+const MIN_MIGRATION_NUM = 14;
+
+function listMigrationFiles() {
+  if (!fs.existsSync(migDir)) {
+    console.warn('[migrate] No folder:', migDir);
+    return [];
+  }
+  return fs
+    .readdirSync(migDir)
+    .filter((f) => f.endsWith('.sql'))
+    .filter((f) => {
+      const m = /^(\d{3})_/.exec(f);
+      return m && Number(m[1]) >= MIN_MIGRATION_NUM;
+    })
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
 
 async function main() {
+  const names = listMigrationFiles();
+  if (!names.length) {
+    console.error('[migrate] No .sql files in supabase/migrations/');
+    process.exit(1);
+  }
+
   const client = new pg.Client({
     connectionString: url,
     ssl: { rejectUnauthorized: false },
   });
   await client.connect();
   try {
-    for (const rel of files) {
+    for (const name of names) {
+      const rel = path.join('supabase', 'migrations', name);
       const full = path.join(root, rel);
-      if (!fs.existsSync(full)) {
-        console.warn('[migrate] Skip (missing file):', rel);
-        continue;
-      }
       const sql = fs.readFileSync(full, 'utf8');
       console.log('[migrate] Applying', rel);
       await client.query(sql);

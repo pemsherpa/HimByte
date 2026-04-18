@@ -3,6 +3,9 @@ import { Router } from 'express';
 import { supabase, getClient } from '../supabaseClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { attachCategoryNames } from '../lib/menuItemCategoryNames.js';
+import { provisionRestaurantOwner } from '../lib/onboardingProvision.js';
+import { decryptRegistrationSecret } from '../lib/registrationEncryption.js';
+import { sendGuestEmail, venueRegistrationRejectedContent } from '../lib/mailer.js';
 
 const router = Router();
 
@@ -544,6 +547,122 @@ router.get('/restaurant-analytics/:restaurantId', requireAuth, async (req, res) 
     receipts_today_count,
     receipts_today_total,
   });
+});
+
+// ── Super Admin: pending venue registrations (List your venue) ─────────────
+router.get('/venue-registrations', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const status = req.query.status ? String(req.query.status).trim() : 'pending';
+  const allowed = ['pending', 'approved', 'rejected'];
+  if (!allowed.includes(status)) {
+    return res.status(400).json({ error: `status must be one of: ${allowed.join(', ')}` });
+  }
+  const { data, error } = await supabase
+    .from('venue_registration_requests')
+    .select(
+      'id, email, phone, address, vat_pan_number, restaurant_name, slug, owner_name, venue_type, status, created_at, reviewed_at',
+    )
+    .eq('status', status)
+    .order('created_at', { ascending: false });
+  if (error) {
+    if (String(error.message).includes('venue_registration_requests')) {
+      return res.status(501).json({
+        error:
+          'Apply migration 017_venue_registration_and_order_display.sql (venue_registration_requests table).',
+      });
+    }
+    return res.status(500).json({ error: error.message });
+  }
+  res.json(data || []);
+});
+
+router.post('/venue-registrations/:id/approve', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const url = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) {
+    return res.status(501).json({ error: 'SUPABASE_SERVICE_ROLE_KEY required for provisioning.' });
+  }
+
+  const { data: row, error: fetchErr } = await supabase
+    .from('venue_registration_requests')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (fetchErr) return res.status(500).json({ error: fetchErr.message });
+  if (!row) return res.status(404).json({ error: 'Pending request not found' });
+
+  let password;
+  try {
+    password = decryptRegistrationSecret(row.password_encrypted);
+  } catch {
+    return res.status(500).json({ error: 'Could not read stored credentials. Reject and ask them to re-apply.' });
+  }
+
+  const result = await provisionRestaurantOwner({
+    supabaseUrl: url,
+    serviceKey,
+    email: row.email,
+    password,
+    restaurant_name: row.restaurant_name,
+    slugInput: row.slug,
+    owner_name: row.owner_name,
+    venue_type: row.venue_type,
+    phone: row.phone,
+    address: row.address,
+    vat_pan_number: row.vat_pan_number,
+  });
+
+  if (result.error) {
+    return res.status(400).json({ error: result.error });
+  }
+
+  const { error: upErr } = await supabase
+    .from('venue_registration_requests')
+    .update({
+      status: 'approved',
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: req.user?.id || null,
+    })
+    .eq('id', row.id);
+
+  if (upErr) return res.status(500).json({ error: upErr.message });
+
+  res.json({ restaurant: result.restaurant, message: 'Venue provisioned. Owner can sign in.' });
+});
+
+router.post('/venue-registrations/:id/reject', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const { data: row, error: fetchErr } = await supabase
+    .from('venue_registration_requests')
+    .select('*')
+    .eq('id', req.params.id)
+    .eq('status', 'pending')
+    .maybeSingle();
+
+  if (fetchErr) return res.status(500).json({ error: fetchErr.message });
+  if (!row) return res.status(404).json({ error: 'Pending request not found' });
+
+  const { error: upErr } = await supabase
+    .from('venue_registration_requests')
+    .update({
+      status: 'rejected',
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: req.user?.id || null,
+    })
+    .eq('id', row.id);
+
+  if (upErr) return res.status(500).json({ error: upErr.message });
+
+  const { subject, text, html } = venueRegistrationRejectedContent({
+    ownerName: row.owner_name,
+    email: row.email,
+  });
+  sendGuestEmail({ to: row.email, subject, text, html }).then((r) => {
+    if (r?.skipped) console.warn('[email] skipped venue reject', r.reason);
+    else if (r && !r.ok) console.warn('[email] failed venue reject', r.error || 'unknown');
+  }).catch(() => {});
+
+  res.json({ ok: true, message: 'Request rejected; applicant was emailed.' });
 });
 
 export default router;

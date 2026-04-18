@@ -1,30 +1,22 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { createClient } from '@supabase/supabase-js';
+import { encryptRegistrationSecret } from '../lib/registrationEncryption.js';
+import { slugify } from '../lib/onboardingProvision.js';
 
 const router = Router();
 
 const registerOwnerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 3,
+  max: 5,
   message: { error: 'Too many registration attempts from this address. Try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-function slugify(s) {
-  return (
-    String(s || '')
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'restaurant'
-  );
-}
-
 /**
- * Self-serve restaurant owner signup (requires service role on the server).
- * Creates auth user + restaurant + profile (restaurant_admin).
+ * Self-serve signup: stores an encrypted password + details for super-admin approval.
+ * No auth user or restaurant row is created until approved in Himbyte HQ.
  */
 router.post('/register-owner', registerOwnerLimiter, async (req, res) => {
   const url = process.env.SUPABASE_URL;
@@ -36,66 +28,77 @@ router.post('/register-owner', registerOwnerLimiter, async (req, res) => {
     });
   }
 
-  const { email, password, restaurant_name, slug: slugInput, owner_name, venue_type } = req.body;
-  if (!email || !password || !restaurant_name || !owner_name) {
-    return res.status(400).json({ error: 'email, password, restaurant_name, and owner_name are required' });
+  const {
+    email,
+    password,
+    restaurant_name,
+    slug: slugInput,
+    owner_name,
+    venue_type,
+    phone,
+    address,
+    vat_pan_number,
+  } = req.body;
+  if (!email || !password || !restaurant_name || !owner_name || !phone) {
+    return res.status(400).json({
+      error: 'email, password, restaurant_name, owner_name, and phone are required',
+    });
   }
 
   const admin = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
 
-  const baseSlug = slugify(slugInput || restaurant_name);
-  let slug = baseSlug;
-  for (let i = 0; i < 30; i++) {
-    const { data: clash } = await admin.from('restaurants').select('id').eq('slug', slug).maybeSingle();
-    if (!clash?.id) break;
-    slug = `${baseSlug}-${i + 2}`;
-  }
-
-  const { data: authData, error: authErr } = await admin.auth.admin.createUser({
-    email: String(email).trim().toLowerCase(),
-    password: String(password),
-    email_confirm: true,
-    user_metadata: { full_name: String(owner_name).trim() },
-  });
-  if (authErr) return res.status(400).json({ error: authErr.message });
-
-  const userId = authData.user.id;
-
+  const slug = slugify(slugInput || restaurant_name);
   const vt = String(venue_type || 'restaurant').toLowerCase();
   const venueType = vt === 'hotel' ? 'hotel' : 'restaurant';
 
-  const { data: restaurant, error: rErr } = await admin
-    .from('restaurants')
+  let password_encrypted;
+  try {
+    password_encrypted = encryptRegistrationSecret(password);
+  } catch {
+    return res.status(500).json({ error: 'Could not secure your application. Try again.' });
+  }
+
+  const { data, error } = await admin
+    .from('venue_registration_requests')
     .insert({
-      name: String(restaurant_name).trim(),
+      email: String(email).trim().toLowerCase(),
+      password_encrypted,
+      restaurant_name: String(restaurant_name).trim(),
       slug,
-      is_active: true,
+      owner_name: String(owner_name).trim(),
       venue_type: venueType,
+      phone: String(phone).trim(),
+      address: address != null && String(address).trim() ? String(address).trim() : null,
+      vat_pan_number:
+        vat_pan_number != null && String(vat_pan_number).trim()
+          ? String(vat_pan_number).trim()
+          : null,
+      status: 'pending',
     })
-    .select()
+    .select('id')
     .single();
 
-  if (rErr) {
-    await admin.auth.admin.deleteUser(userId);
-    return res.status(400).json({ error: rErr.message });
+  if (error) {
+    if (error.code === '23505' || String(error.message).includes('duplicate')) {
+      return res.status(409).json({
+        error:
+          'You already have a pending application with this email. We will notify you when it is reviewed.',
+      });
+    }
+    if (String(error.message).includes('venue_registration_requests') || String(error.message).includes('phone')) {
+      return res.status(501).json({
+        error:
+          'Database migration missing: apply supabase/migrations/017 and 018 (venue_registration_requests) to your project.',
+      });
+    }
+    return res.status(400).json({ error: error.message });
   }
 
-  const ownerEmail = String(email).trim().toLowerCase();
-  const { error: pErr } = await admin.from('profiles').insert({
-    id: userId,
-    restaurant_id: restaurant.id,
-    full_name: String(owner_name).trim(),
-    role: 'restaurant_admin',
-    email: ownerEmail,
+  res.status(202).json({
+    id: data.id,
+    message:
+      'Application received. Our team will review it shortly. You will get an email when your venue is approved — then you can sign in.',
   });
-
-  if (pErr) {
-    await admin.from('restaurants').delete().eq('id', restaurant.id);
-    await admin.auth.admin.deleteUser(userId);
-    return res.status(400).json({ error: pErr.message });
-  }
-
-  res.status(201).json({ restaurant, message: 'Account created. You can sign in now.' });
 });
 
 export default router;

@@ -9,14 +9,18 @@ const router = Router();
 const defaultAppUrl = () => process.env.APP_URL || process.env.CLIENT_URL?.split(',')[0]?.trim() || 'http://localhost:5174';
 
 /** Columns safe before/after optional migrations (avoid 500 if e.g. venue_type not migrated yet). */
+/** Guest menu / public slug — no billing fields. */
 const RESTAURANT_PUBLIC_FIELDS =
-  'id, name, slug, logo_url, address, phone, vat_pan_number, is_active';
+  'id, name, slug, logo_url, address, phone, vat_pan_number, is_active, venue_type';
+
+/** Staff dashboard by UUID — includes subscription summary for owners. */
+const RESTAURANT_BY_ID_FIELDS = `${RESTAURANT_PUBLIC_FIELDS}, subscription_status, subscription_plan, trial_ends_at`;
 
 // Public: Get restaurant by UUID (for staff dashboard / QR page)
 router.get('/by-id/:id', async (req, res) => {
   const { data, error } = await supabase
     .from('restaurants')
-    .select(RESTAURANT_PUBLIC_FIELDS)
+    .select(RESTAURANT_BY_ID_FIELDS)
     .eq('id', req.params.id)
     .maybeSingle();
 

@@ -10,7 +10,7 @@ import {
   sanitizeContactField,
   sanitizeNotes,
 } from '../lib/orderValidation.js';
-import { sendGuestEmail, guestOrderPlacedContent, guestOrderReadyContent } from '../lib/mailer.js';
+import { sendGuestEmail, guestOrderApprovedContent, guestOrderReadyContent } from '../lib/mailer.js';
 
 const router = Router();
 
@@ -96,6 +96,18 @@ router.post('/', guestOrderLimiter, async (req, res) => {
   const safePhone = sanitizeContactField(guest_phone);
   const safeEmail = sanitizeContactField(guest_email);
 
+  let nextDisplay = 1;
+  const { data: maxRow } = await supabase
+    .from('orders')
+    .select('display_number')
+    .eq('restaurant_id', restaurant_id)
+    .order('display_number', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+  if (maxRow?.display_number != null && Number.isFinite(Number(maxRow.display_number))) {
+    nextDisplay = Number(maxRow.display_number) + 1;
+  }
+
   const { data: order, error: orderError } = await supabase
     .from('orders')
     .insert({
@@ -107,6 +119,7 @@ router.post('/', guestOrderLimiter, async (req, res) => {
       session_id: session_id ? String(session_id).slice(0, 128) : null,
       guest_phone: safePhone,
       guest_email: safeEmail,
+      display_number: nextDisplay,
     })
     .select()
     .single();
@@ -122,17 +135,6 @@ router.post('/', guestOrderLimiter, async (req, res) => {
 
   const { error: itemsError } = await supabase.from('order_items').insert(orderItems);
   if (itemsError) return res.status(500).json({ error: itemsError.message });
-
-  if (safeEmail) {
-    const { subject, text, html } = guestOrderPlacedContent({
-      orderId: order.id,
-      total: total_price,
-    });
-    sendGuestEmail({ to: safeEmail, subject, text, html }).then((r) => {
-      if (r?.skipped) console.warn('[email] skipped order placed', r.reason);
-      else if (r && !r.ok) console.warn('[email] failed order placed', r.error || 'unknown');
-    }).catch(() => {});
-  }
 
   res.status(201).json(order);
 });
@@ -179,7 +181,7 @@ router.patch('/:orderId/status', requireAuth, requireRole('restaurant_admin', 's
 
   const { data: existing, error: fetchErr } = await db
     .from('orders')
-    .select('id, status, restaurant_id, table_room_id, total_price, guest_email')
+    .select('id, status, restaurant_id, table_room_id, total_price, guest_email, display_number')
     .eq('id', req.params.orderId)
     .single();
 
@@ -220,17 +222,38 @@ router.patch('/:orderId/status', requireAuth, requireRole('restaurant_admin', 's
     }
   }
 
-  // Guest email: only when order is ready (transactional; "placed" is sent on POST).
   const email = existing.guest_email ? String(existing.guest_email).trim() : '';
-  if (email && status === 'ready') {
-    const { subject, text, html } = guestOrderReadyContent({
-      orderId: existing.id,
-      total: existing.total_price,
-    });
-    sendGuestEmail({ to: email, subject, text, html }).then((r) => {
-      if (r?.skipped) console.warn('[email] skipped order ready', r.reason);
-      else if (r && !r.ok) console.warn('[email] failed order ready', r.error || 'unknown');
-    }).catch(() => {});
+  if (email && (status === 'approved' || status === 'ready')) {
+    const { data: restRow } = await db
+      .from('restaurants')
+      .select('name')
+      .eq('id', existing.restaurant_id)
+      .maybeSingle();
+    const venueName = restRow?.name || 'Restaurant';
+    const orderNum = data.display_number ?? existing.display_number ?? '—';
+
+    if (status === 'approved' && wasPending) {
+      const { subject, text, html } = guestOrderApprovedContent({
+        venueName,
+        orderNumber: orderNum,
+        total: existing.total_price,
+      });
+      sendGuestEmail({ to: email, subject, text, html }).then((r) => {
+        if (r?.skipped) console.warn('[email] skipped order approved', r.reason);
+        else if (r && !r.ok) console.warn('[email] failed order approved', r.error || 'unknown');
+      }).catch(() => {});
+    }
+    if (status === 'ready') {
+      const { subject, text, html } = guestOrderReadyContent({
+        venueName,
+        orderNumber: orderNum,
+        total: existing.total_price,
+      });
+      sendGuestEmail({ to: email, subject, text, html }).then((r) => {
+        if (r?.skipped) console.warn('[email] skipped order ready', r.reason);
+        else if (r && !r.ok) console.warn('[email] failed order ready', r.error || 'unknown');
+      }).catch(() => {});
+    }
   }
 
   res.json(data);

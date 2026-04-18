@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { LogIn, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import useAuthStore from '../stores/authStore';
 import { DEMO_MODE } from '../lib/supabase';
+import MandalaBackground from '../components/patterns/MandalaBackground';
 
 export default function LoginPage() {
   const [email, setEmail]       = useState('');
@@ -30,12 +31,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas flex items-center justify-center p-4 sm:p-6 safe-area-pb">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4 sm:p-6 safe-area-pb relative overflow-hidden">
+      <MandalaBackground opacity={0.05} className="z-0" />
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="w-full max-w-sm min-w-0"
+        className="w-full max-w-sm min-w-0 relative z-10"
       >
         {/* Logo */}
         <div className="text-center mb-8">

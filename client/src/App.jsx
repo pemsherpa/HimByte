@@ -37,6 +37,7 @@ import { EsewaSuccessPage, EsewaFailurePage } from './pages/merchant/EsewaPaymen
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminRestaurants from './pages/admin/AdminRestaurants';
 import AdminAnalytics from './pages/admin/AdminAnalytics';
+import AdminVenueRequests from './pages/admin/AdminVenueRequests';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuthStore();
@@ -157,6 +158,7 @@ export default function App() {
           </ProtectedRoute>
         }>
           <Route index element={<AdminDashboard />} />
+          <Route path="venue-requests" element={<AdminVenueRequests />} />
           <Route path="restaurants" element={<AdminRestaurants />} />
           <Route path="analytics" element={<AdminAnalytics />} />
         </Route>

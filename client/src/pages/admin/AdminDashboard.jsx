@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Building2, Receipt, TrendingUp, CheckCircle, BarChart2, Settings2, FileSpreadsheet } from 'lucide-react';
+import { Building2, Receipt, TrendingUp, CheckCircle, BarChart2, Settings2, FileSpreadsheet, UserPlus } from 'lucide-react';
 import { api } from '../../lib/api';
 import Card from '../../components/ui/Card';
 import Badge from '../../components/ui/Badge';
@@ -85,6 +85,13 @@ export default function AdminDashboard() {
             <p className="text-sm text-body mt-1">Subscriptions, tenants, and cross-venue metrics. Deactivate tenants from the restaurants list.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link
+              to="/admin/venue-requests"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-gold/40 bg-gold-soft text-sm font-bold text-gold-dark hover:border-gold transition-colors"
+            >
+              <UserPlus size={16} />
+              Venue applications
+            </Link>
             <Link
               to="/admin/analytics"
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-border bg-surface text-sm font-bold text-ink hover:border-primary/40 transition-colors"
