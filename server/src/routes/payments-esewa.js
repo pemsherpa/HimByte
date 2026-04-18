@@ -3,7 +3,11 @@ import { Router } from 'express';
 import { getClient, supabase, DEMO_MODE } from '../supabaseClient.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireActiveStaffSubscription } from '../middleware/subscription.js';
-import { signEsewaRequest, verifyEsewaResponseSignature } from '../lib/esewa.js';
+import {
+  formatTotalAmountForSign,
+  signEsewaRequest,
+  verifyEsewaResponseSignature,
+} from '../lib/esewa.js';
 
 const router = Router();
 
@@ -78,9 +82,14 @@ function normalizeBaseUrl(raw) {
   return String(raw || '').trim().replace(/\/$/, '');
 }
 
-function appPublicBaseUrlFromRequest(req) {
-  const origin = req?.headers?.origin;
-  if (origin) return normalizeBaseUrl(origin);
+/**
+ * Public URL of *this* API host (e.g. https://himbyte.onrender.com).
+ * Do not use the browser `Origin` (SPA on Cloudflare) for eSewa — success/failure must hit Express on the API.
+ * Set API_PUBLIC_URL if your reverse proxy strips Host / X-Forwarded-*.
+ */
+function apiPublicBaseUrlFromRequest(req) {
+  const fromEnv = process.env.API_PUBLIC_URL?.trim();
+  if (fromEnv) return normalizeBaseUrl(fromEnv);
 
   const xfProto = req?.headers?.['x-forwarded-proto'];
   const xfHost = req?.headers?.['x-forwarded-host'];
@@ -92,7 +101,11 @@ function appPublicBaseUrlFromRequest(req) {
 
   const host = req?.headers?.host;
   if (host) {
-    const proto = (req?.protocol || 'http').trim();
+    let proto = 'https';
+    if (req?.headers?.['x-forwarded-proto']) {
+      proto = String(req.headers['x-forwarded-proto']).split(',')[0].trim();
+    } else if (req?.secure) proto = 'https';
+    else proto = String(req?.protocol || 'http').replace(/:$/, '');
     return normalizeBaseUrl(`${proto}://${host}`);
   }
 
@@ -244,21 +257,21 @@ router.post('/esewa/table-bill/init', requireAuth, requireActiveStaffSubscriptio
     return res.status(400).json({ error: 'No running bill to pay (approved total is zero).' });
   }
 
-  const amountStr = running.toFixed(2);
-  const tax_amount = '0.00';
-  const product_service_charge = '0.00';
-  const product_delivery_charge = '0.00';
-  const total_amount = (
+  const amountStr = formatTotalAmountForSign(running);
+  const tax_amount = formatTotalAmountForSign(0);
+  const product_service_charge = formatTotalAmountForSign(0);
+  const product_delivery_charge = formatTotalAmountForSign(0);
+  const totalNum =
     Number(amountStr) +
     Number(tax_amount) +
     Number(product_service_charge) +
-    Number(product_delivery_charge)
-  ).toFixed(2);
+    Number(product_delivery_charge);
+  const total_amount = formatTotalAmountForSign(totalNum);
 
   const transaction_uuid = crypto.randomUUID();
   const signature = signEsewaRequest(total_amount, transaction_uuid, productCode, secret);
 
-  const base = appPublicBaseUrlFromRequest(req);
+  const base = apiPublicBaseUrlFromRequest(req);
   // Use backend endpoints to capture POST return payloads, then redirect to SPA with ?data=...
   const success_url = `${base}/api/payments/esewa/staff/success`;
   const failure_url = `${base}/api/payments/esewa/staff/failure`;
@@ -510,21 +523,21 @@ router.post('/esewa/guest/init', async (req, res) => {
     return res.status(500).json({ error: 'Could not load restaurant' });
   }
 
-  const amountStr = running.toFixed(2);
-  const tax_amount = '0.00';
-  const product_service_charge = '0.00';
-  const product_delivery_charge = '0.00';
-  const total_amount = (
+  const amountStr = formatTotalAmountForSign(running);
+  const tax_amount = formatTotalAmountForSign(0);
+  const product_service_charge = formatTotalAmountForSign(0);
+  const product_delivery_charge = formatTotalAmountForSign(0);
+  const totalNum =
     Number(amountStr) +
     Number(tax_amount) +
     Number(product_service_charge) +
-    Number(product_delivery_charge)
-  ).toFixed(2);
+    Number(product_delivery_charge);
+  const total_amount = formatTotalAmountForSign(totalNum);
 
   const transaction_uuid = crypto.randomUUID();
   const signature = signEsewaRequest(total_amount, transaction_uuid, productCode, secret);
 
-  const base = appPublicBaseUrlFromRequest(req);
+  const base = apiPublicBaseUrlFromRequest(req);
   const rQ = encodeURIComponent(restaurantRow.slug);
   const locQ = encodeURIComponent(table_room_id);
   // Use backend endpoints to capture POST return payloads, then redirect to SPA with ?data=...

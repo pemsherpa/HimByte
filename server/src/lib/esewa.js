@@ -5,11 +5,18 @@ import crypto from 'node:crypto';
  * Message format (mandatory field order): total_amount, transaction_uuid, product_code
  * @see https://developer.esewa.com.np/pages/Epay-V2
  */
-/** Amount as sent in the form fields (must match what eSewa hashes for `total_amount`). */
+/**
+ * Canonical amount strings for both the HMAC message and form fields.
+ * eSewa Epay v2 examples use whole NPR amounts without decimals (`total_amount=100`, `total_amount=110`);
+ * fractional rupees use two decimals. The signed string must match the submitted `total_amount` field exactly.
+ */
 export function formatTotalAmountForSign(total_amount) {
   const n = Number(total_amount);
-  if (Number.isFinite(n)) return n.toFixed(2);
-  return String(total_amount ?? '').trim();
+  if (!Number.isFinite(n)) return String(total_amount ?? '').trim();
+  const cents = Math.round(n * 100);
+  if (!Number.isFinite(cents)) return '0';
+  if (cents % 100 === 0) return String(Math.trunc(cents / 100));
+  return (cents / 100).toFixed(2);
 }
 
 export function buildEsewaRequestSignMessage(total_amount, transaction_uuid, product_code) {
