@@ -82,6 +82,41 @@ function normalizeBaseUrl(raw) {
   return String(raw || '').trim().replace(/\/$/, '');
 }
 
+function isLocalHostname(hostname) {
+  const h = String(hostname || '').trim().toLowerCase();
+  return (
+    h === 'localhost' ||
+    h === '127.0.0.1' ||
+    h === '::1' ||
+    h.endsWith('.local')
+  );
+}
+
+function isPrivateIpv4(hostname) {
+  const m = String(hostname || '').trim().match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (!m) return false;
+  const a = Number(m[1]);
+  const b = Number(m[2]);
+  if (a === 10) return true;
+  if (a === 127) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
+}
+
+function isPublicHttpUrl(raw) {
+  if (!raw) return false;
+  try {
+    const u = new URL(String(raw));
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+    const host = u.hostname;
+    if (isLocalHostname(host) || isPrivateIpv4(host)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Public URL of *this* API host (e.g. https://himbyte.onrender.com).
  * Do not use the browser `Origin` (SPA on Cloudflare) for eSewa — success/failure must hit Express on the API.
@@ -89,14 +124,17 @@ function normalizeBaseUrl(raw) {
  */
 function apiPublicBaseUrlFromRequest(req) {
   const fromEnv = process.env.API_PUBLIC_URL?.trim();
-  if (fromEnv) return normalizeBaseUrl(fromEnv);
+  if (isPublicHttpUrl(fromEnv)) return normalizeBaseUrl(fromEnv);
 
   const xfProto = req?.headers?.['x-forwarded-proto'];
   const xfHost = req?.headers?.['x-forwarded-host'];
   if (xfProto && xfHost) {
     const proto = String(xfProto).split(',')[0].trim();
     const host = String(xfHost).split(',')[0].trim();
-    if (proto && host) return normalizeBaseUrl(`${proto}://${host}`);
+    if (proto && host) {
+      const candidate = normalizeBaseUrl(`${proto}://${host}`);
+      if (isPublicHttpUrl(candidate)) return candidate;
+    }
   }
 
   const host = req?.headers?.host;
@@ -106,11 +144,20 @@ function apiPublicBaseUrlFromRequest(req) {
       proto = String(req.headers['x-forwarded-proto']).split(',')[0].trim();
     } else if (req?.secure) proto = 'https';
     else proto = String(req?.protocol || 'http').replace(/:$/, '');
-    return normalizeBaseUrl(`${proto}://${host}`);
+    const candidate = normalizeBaseUrl(`${proto}://${host}`);
+    if (isPublicHttpUrl(candidate)) return candidate;
   }
 
-  const raw = process.env.APP_URL || process.env.CLIENT_URL || 'http://localhost:5173';
-  return normalizeBaseUrl(raw);
+  const fallback = process.env.APP_URL || process.env.CLIENT_URL || '';
+  if (isPublicHttpUrl(fallback)) return normalizeBaseUrl(fallback);
+  return '';
+}
+
+function buildEsewaTransactionUuid() {
+  // Keep within conservative gateway constraints: alphanumeric + hyphen, short length.
+  const ts = Date.now().toString(36).toUpperCase();
+  const rand = crypto.randomBytes(5).toString('hex').toUpperCase();
+  return `HB-${ts}-${rand}`;
 }
 
 function esewaFormUrl() {
@@ -239,6 +286,13 @@ router.post('/esewa/table-bill/init', requireAuth, requireActiveStaffSubscriptio
   if (!secret) {
     return res.status(503).json({ error: 'eSewa is not configured. Set ESEWA_SECRET_KEY in environment.' });
   }
+  const base = apiPublicBaseUrlFromRequest(req);
+  if (!base) {
+    return res.status(400).json({
+      error:
+        'eSewa requires a public callback URL. Set API_PUBLIC_URL to your deployed API origin (e.g. https://api.yourdomain.com).',
+    });
+  }
 
   const db = getClient(req);
   const { data: table, error: tErr } = await db
@@ -268,10 +322,9 @@ router.post('/esewa/table-bill/init', requireAuth, requireActiveStaffSubscriptio
     Number(product_delivery_charge);
   const total_amount = formatTotalAmountForSign(totalNum);
 
-  const transaction_uuid = crypto.randomUUID();
+  const transaction_uuid = buildEsewaTransactionUuid();
   const signature = signEsewaRequest(total_amount, transaction_uuid, productCode, secret);
 
-  const base = apiPublicBaseUrlFromRequest(req);
   // Use backend endpoints to capture POST return payloads, then redirect to SPA with ?data=...
   const success_url = `${base}/api/payments/esewa/staff/success`;
   const failure_url = `${base}/api/payments/esewa/staff/failure`;
@@ -484,6 +537,13 @@ router.post('/esewa/guest/init', async (req, res) => {
   if (!secret) {
     return res.status(503).json({ error: 'eSewa is not configured (ESEWA_SECRET_KEY)' });
   }
+  const base = apiPublicBaseUrlFromRequest(req);
+  if (!base) {
+    return res.status(400).json({
+      error:
+        'eSewa requires a public callback URL. Set API_PUBLIC_URL to your deployed API origin (e.g. https://api.yourdomain.com).',
+    });
+  }
 
   const { data: orders, error: oErr } = await supabase
     .from('orders')
@@ -534,10 +594,9 @@ router.post('/esewa/guest/init', async (req, res) => {
     Number(product_delivery_charge);
   const total_amount = formatTotalAmountForSign(totalNum);
 
-  const transaction_uuid = crypto.randomUUID();
+  const transaction_uuid = buildEsewaTransactionUuid();
   const signature = signEsewaRequest(total_amount, transaction_uuid, productCode, secret);
 
-  const base = apiPublicBaseUrlFromRequest(req);
   const rQ = encodeURIComponent(restaurantRow.slug);
   const locQ = encodeURIComponent(table_room_id);
   // Use backend endpoints to capture POST return payloads, then redirect to SPA with ?data=...

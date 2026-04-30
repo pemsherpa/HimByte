@@ -6,6 +6,13 @@ import toast from 'react-hot-toast';
 
 const STATUSES = ['pending', 'approved', 'preparing', 'ready', 'served', 'cancelled'];
 
+function statusPillClass(status) {
+  if (status === 'served') return 'bg-success-soft text-success';
+  if (status === 'pending') return 'bg-warning-soft text-warning';
+  if (status === 'cancelled') return 'bg-danger-soft text-danger';
+  return 'bg-primary-soft text-primary';
+}
+
 export default function AdminOrdersControl() {
   const [orders, setOrders] = useState([]);
   const [restaurants, setRestaurants] = useState([]);
@@ -123,7 +130,7 @@ export default function AdminOrdersControl() {
                   <td className="px-4 py-3">{o.tables_rooms?.identifier || '—'}</td>
                   <td className="px-4 py-3">{o.display_number ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-lg bg-primary-soft text-primary">
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-lg ${statusPillClass(o.status)}`}>
                       {o.status}
                     </span>
                   </td>

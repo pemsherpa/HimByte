@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ClipboardList, TrendingUp, Clock, CheckCircle, ArrowRight, Bell,
+  ClipboardList, TrendingUp, Clock, CheckCircle, ArrowRight, Bell, LifeBuoy,
   Building2, Phone, MapPin, Receipt, BadgeCheck,
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
@@ -267,6 +267,21 @@ export default function MerchantDashboard() {
               Rs. {Number(analytics?.receipts_today_total ?? 0).toLocaleString()}
               <span className="text-xs font-medium text-muted ml-2">{analytics?.receipts_today_count ?? 0} slips</span>
             </p>
+          </div>
+          <ArrowRight className="text-primary shrink-0" size={18} />
+        </Link>
+        <Link
+          to="/merchant/support"
+          className="rounded-2xl border border-border bg-surface p-4 flex items-center justify-between gap-3 hover:border-primary/25 transition-colors sm:col-span-2"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-primary-soft text-primary flex items-center justify-center">
+              <LifeBuoy size={18} />
+            </div>
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-muted">Need help?</p>
+              <p className="text-sm font-semibold text-ink">Contact Himbyte support and track resolution history</p>
+            </div>
           </div>
           <ArrowRight className="text-primary shrink-0" size={18} />
         </Link>

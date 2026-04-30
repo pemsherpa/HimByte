@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { supabase } from '../supabaseClient.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { hqBroadcastContent, sendGuestEmail } from '../lib/mailer.js';
 
 const router = Router();
 
@@ -368,7 +369,71 @@ router.post('/broadcasts', requireAuth, requireRole('super_admin'), async (req, 
     .single();
 
   if (error) return res.status(500).json({ error: error.message });
-  res.status(201).json(data);
+
+  const targetRestaurantIds = target_scope === 'restaurants' ? restaurant_ids : null;
+
+  let owners = [];
+  let ownerFetchError = null;
+
+  if (target_scope === 'all') {
+    const { data: allOwners, error: oErr } = await supabase
+      .from('profiles')
+      .select('id, restaurant_id, full_name, email, role, restaurants(name)')
+      .eq('role', 'restaurant_admin')
+      .not('restaurant_id', 'is', null);
+    owners = allOwners || [];
+    ownerFetchError = oErr;
+  } else {
+    const { data: pickedOwners, error: oErr } = await supabase
+      .from('profiles')
+      .select('id, restaurant_id, full_name, email, role, restaurants(name)')
+      .eq('role', 'restaurant_admin')
+      .in('restaurant_id', targetRestaurantIds);
+    owners = pickedOwners || [];
+    ownerFetchError = oErr;
+  }
+
+  if (ownerFetchError) {
+    return res.status(500).json({ error: ownerFetchError.message });
+  }
+
+  const recipients = owners
+    .map((o) => ({
+      email: String(o.email || '').trim(),
+      venueName: o?.restaurants?.name || 'your venue',
+    }))
+    .filter((x) => x.email.includes('@'));
+
+  const outcomes = await Promise.allSettled(
+    recipients.map((r) => {
+      const content = hqBroadcastContent({
+        venueName: r.venueName,
+        title,
+        body,
+      });
+      return sendGuestEmail({
+        to: r.email,
+        subject: content.subject,
+        text: content.text,
+        html: content.html,
+      });
+    }),
+  );
+
+  const emailAttempted = recipients.length;
+  let emailSent = 0;
+  let emailFailed = 0;
+  for (const row of outcomes) {
+    if (row.status === 'fulfilled' && row.value?.ok) emailSent += 1;
+    else emailFailed += 1;
+  }
+
+  res.status(201).json({
+    ...data,
+    email_attempted: emailAttempted,
+    email_sent: emailSent,
+    email_failed: emailFailed,
+  });
 });
 
 export default router;

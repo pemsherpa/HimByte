@@ -238,6 +238,37 @@ export async function sendDemoRequestNotification(payload) {
   return { ok: true };
 }
 
+/** HQ broadcast to venue owners. */
+export function hqBroadcastContent({
+  venueName,
+  title,
+  body,
+}) {
+  const safeVenue = String(venueName || 'your venue').trim() || 'your venue';
+  const safeTitle = String(title || 'Platform update').trim() || 'Platform update';
+  const safeBody = String(body || '').trim();
+
+  const subject = `[Himbyte Notice] ${safeTitle}`;
+  const text = [
+    `Hello ${safeVenue} team,`,
+    '',
+    'Himbyte HQ sent an update for your venue:',
+    `Title: ${safeTitle}`,
+    '',
+    safeBody,
+    '',
+    'You can also view this notice inside your Himbyte dashboard under "From Himbyte".',
+  ].join('\n');
+  const html = guestEmailShell('New notice from Himbyte', `
+    <p style="margin:0 0 12px 0;">Hello <strong>${escapeHtml(safeVenue)}</strong> team,</p>
+    <p style="margin:0 0 12px 0;">Himbyte HQ sent an update for your venue.</p>
+    <p style="margin:0 0 8px 0;"><strong>${escapeHtml(safeTitle)}</strong></p>
+    <div style="white-space:pre-wrap;background:#F4F8FB;border:1px solid #CBD5E1;border-radius:12px;padding:12px;color:#334155;">${escapeHtml(safeBody)}</div>
+    <p style="margin:12px 0 0 0;">You can also view this notice inside your Himbyte dashboard under <strong>From Himbyte</strong>.</p>
+  `);
+  return { subject, text, html };
+}
+
 function escapeHtml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
